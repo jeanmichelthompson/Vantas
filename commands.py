@@ -35,7 +35,7 @@ async def handle_message(bot, message):
         # Call the appropriate function from the dictionary
         await commands[command](bot, message)
 
-# Command to log a win
+# Function to log a win
 async def log_win_command(bot, message):
     msg = message.content
     user_id = str(message.author.id)
@@ -50,7 +50,7 @@ async def log_win_command(bot, message):
     else:
         await message.channel.send("Game name not provided. Usage: !win <game_name>")
 
-# Command to log a loss
+# Function to log a loss
 async def log_loss_command(bot, message):
     msg = message.content
     user_id = str(message.author.id)
@@ -65,7 +65,7 @@ async def log_loss_command(bot, message):
     else:
         await message.channel.send("Game name not provided. Usage: !loss <game_name>")
 
-# Command to show the leaderboard
+# Function to show the leaderboard
 async def leaderboard_command(bot, message):
     msg = message.content
     if len(msg.split()) > 1:
@@ -83,7 +83,7 @@ async def leaderboard_command(bot, message):
     else:
         await message.channel.send("Game name not provided. Usage: !leaderboard <game_name>")
 
-# Command to check the current database
+# Function to check the current database
 async def checkdb_command(bot, message):
     if has_og_role(message.author):
         for key in db.keys():
@@ -91,7 +91,7 @@ async def checkdb_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
-# Command to clear the database
+# Function to clear the database
 async def cleardb_command(bot, message):
     if has_og_role(message.author):
         for key in db.keys():
@@ -100,7 +100,7 @@ async def cleardb_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
-# Command to check individual rank for a player by user ID
+# Function to check individual rank for a player by user ID
 async def rank_command(bot, message):
     msg = message.content
     if len(msg.split()) > 1:
@@ -117,7 +117,7 @@ async def rank_command(bot, message):
     else:
         await message.channel.send(f"No data available for user {display_name}.")
 
-# Command to clear individual rank for a player by user ID
+# Function to clear individual rank for a player by user ID
 async def clearrank_command(bot, message):
     msg = message.content
     if has_og_role(message.author):
@@ -128,7 +128,7 @@ async def clearrank_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
-# Command to set individual rank for a player by user ID
+# Function to set individual rank for a player by user ID
 async def setrank_command(bot, message):
     msg = message.content
     if has_og_role(message.author):
@@ -148,7 +148,7 @@ async def setrank_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
-# Command to show the help message
+# Function to show the help message
 async def help_command(bot, message):
     help_message = (
         "**Available Commands:**\n"
@@ -164,7 +164,7 @@ async def help_command(bot, message):
     )
     await message.channel.send(help_message)
 
-# Check if the user has the "OG" role
+# Function to check if the user has the "OG" role
 def has_og_role(member):
     role_names = [role.name for role in member.roles]
     return "OG" in role_names
