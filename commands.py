@@ -1,9 +1,11 @@
+import discord
 from replitdb import update_rank, get_leaderboard, check_rank, clear_rank, set_rank
 import config
+from replit import db
 
+# Main function to handle incoming messages
 async def handle_message(bot, message):
     msg = message.content
-    user_id = str(message.author.id)
 
     # Respond to messages that contain keywords
     if 'genji' in msg.lower():
@@ -11,41 +13,32 @@ async def handle_message(bot, message):
 
     if 'mercy' in msg.lower():
         await message.channel.send('boosted')
+        
+    # Define a dictionary to map commands to their respective handler functions
+    commands = {
+        "!win": log_win_command,
+        "!loss": log_loss_command,
+        "!leaderboard": leaderboard_command,
+        "!checkdb": checkdb_command,
+        "!cleardb": cleardb_command,
+        "!rank": rank_command,
+        "!clearrank": clearrank_command,
+        "!setrank": setrank_command,
+        "!help": help_command,
+    }
 
-    # Command to log a win
-    if msg.startswith("!win"):
-        await log_win_command(message, msg, user_id)
+    # Split the message to get the command and arguments
+    command = msg.split()[0]
 
-    # Command to log a loss
-    if msg.startswith("!loss"):
-        await log_loss_command(message, msg, user_id)
-
-    # Command to show the leaderboard
-    if msg.startswith("!leaderboard"):
-        await leaderboard_command(message, msg)
-
-    # Command to check the current database
-    if msg.startswith("!checkdb"):
-        await checkdb_command(message)
-
-    # Command to clear the database
-    if msg.startswith("!cleardb"):
-        await cleardb_command(message)
-
-    # Command to check individual rank for a player by user ID
-    if msg.startswith("!rank"):
-        await rank_command(message, msg, bot)
-
-    # Command to clear individual rank for a player by user ID
-    if msg.startswith("!clearrank"):
-        await clearrank_command(message, msg)
-
-    # Command to set individual rank for a player by user ID
-    if msg.startswith("!setrank"):
-        await setrank_command(message, msg)
+    # Check if the command exists in the dictionary
+    if command in commands:
+        # Call the appropriate function from the dictionary
+        await commands[command](bot, message)
 
 # Command to log a win
-async def log_win_command(message, msg, user_id):
+async def log_win_command(bot, message):
+    msg = message.content
+    user_id = str(message.author.id)
     if len(msg.split()) > 1:
         game_name = msg.split("!win ", 1)[1].lower()
         game_name_display = game_name.capitalize()
@@ -58,7 +51,9 @@ async def log_win_command(message, msg, user_id):
         await message.channel.send("Game name not provided. Usage: !win <game_name>")
 
 # Command to log a loss
-async def log_loss_command(message, msg, user_id):
+async def log_loss_command(bot, message):
+    msg = message.content
+    user_id = str(message.author.id)
     if len(msg.split()) > 1:
         game_name = msg.split("!loss ", 1)[1].lower()
         game_name_display = game_name.capitalize()
@@ -71,7 +66,8 @@ async def log_loss_command(message, msg, user_id):
         await message.channel.send("Game name not provided. Usage: !loss <game_name>")
 
 # Command to show the leaderboard
-async def leaderboard_command(message, msg):
+async def leaderboard_command(bot, message):
+    msg = message.content
     if len(msg.split()) > 1:
         game_name = msg.split("!leaderboard ", 1)[1].lower()
         game_name_display = game_name.capitalize()
@@ -80,16 +76,15 @@ async def leaderboard_command(message, msg):
             await message.channel.send(f"No data available for the {game_name_display} leaderboard.")
         else:
             leaderboard_message = f"**{game_name_display} Leaderboard**\n"
-            for user_id, wins in leaderboard_data:
-                user = await message.guild.fetch_user(user_id)
-                display_name = user.global_name
-                leaderboard_message += f"{display_name}: {wins} wins\n"
+            for user_id, rank in leaderboard_data:
+                display_name = (await bot.fetch_user(int(user_id))).global_name
+                leaderboard_message += f"{display_name}: {rank}\n"
             await message.channel.send(leaderboard_message)
     else:
         await message.channel.send("Game name not provided. Usage: !leaderboard <game_name>")
 
 # Command to check the current database
-async def checkdb_command(message):
+async def checkdb_command(bot, message):
     if has_og_role(message.author):
         for key in db.keys():
             await message.channel.send(f"{key}: {db[key]}")
@@ -97,7 +92,7 @@ async def checkdb_command(message):
         await message.channel.send("You do not have permission to use this command.")
 
 # Command to clear the database
-async def cleardb_command(message):
+async def cleardb_command(bot, message):
     if has_og_role(message.author):
         for key in db.keys():
             del db[key]
@@ -106,7 +101,8 @@ async def cleardb_command(message):
         await message.channel.send("You do not have permission to use this command.")
 
 # Command to check individual rank for a player by user ID
-async def rank_command(message, msg, bot):
+async def rank_command(bot, message):
+    msg = message.content
     if len(msg.split()) > 1:
         target_user_id = msg.split("!rank ", 1)[1]
     else:
@@ -122,7 +118,8 @@ async def rank_command(message, msg, bot):
         await message.channel.send(f"No data available for user {display_name}.")
 
 # Command to clear individual rank for a player by user ID
-async def clearrank_command(message, msg):
+async def clearrank_command(bot, message):
+    msg = message.content
     if has_og_role(message.author):
         if len(msg.split()) > 1:
             target_user_id = msg.split("!clearrank ", 1)[1]
@@ -132,12 +129,13 @@ async def clearrank_command(message, msg):
         await message.channel.send("You do not have permission to use this command.")
 
 # Command to set individual rank for a player by user ID
-async def setrank_command(message, msg):
+async def setrank_command(bot, message):
+    msg = message.content
     if has_og_role(message.author):
         parts = msg.split()
         if len(parts) == 4:
             target_user_id = parts[1]
-            display_name = (await message.guild.fetch_user(target_user_id)).global_name
+            display_name = (await bot.fetch_user(target_user_id)).global_name
             game_name = parts[2].lower()
             rank = int(parts[3])
             if game_name in config.GAMES:
@@ -150,7 +148,24 @@ async def setrank_command(message, msg):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
+# Command to show the help message
+async def help_command(bot, message):
+    help_message = (
+        "**Available Commands:**\n"
+        "!help - Show this help message\n"
+        "!win <game_name> - Log a win for a game\n"
+        "!loss <game_name> - Log a loss for a game\n"
+        "!leaderboard <game_name> - Show the leaderboard for a game\n"
+        "!rank <user_id> - Check individual rank for a player\n"
+        "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
+        "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
+        "!checkdb - Check the current database (Admin)\n"
+        "!cleardb - Clear the database (Admin)\n"
+    )
+    await message.channel.send(help_message)
+
 # Check if the user has the "OG" role
 def has_og_role(member):
     role_names = [role.name for role in member.roles]
     return "OG" in role_names
+    
