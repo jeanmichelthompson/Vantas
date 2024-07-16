@@ -1,7 +1,9 @@
 import discord
 from discord.ui import Button, View
 from replit import db
+from replitdb import get_leaderboard
 
+# Dictionary to hold queue information for each channel
 queues = {}
 
 
@@ -12,6 +14,7 @@ class QueueView(View):
         super().__init__(timeout=None)
         self.channel_id = channel_id  # Store the channel ID for context
 
+    # Button for joining the queue
     @discord.ui.button(label="Join Queue",
                        style=discord.ButtonStyle.primary,
                        custom_id="join_queue")
@@ -19,6 +22,7 @@ class QueueView(View):
                                 button: Button):
         await handle_join_queue(interaction, self.channel_id)
 
+    # Button for leaving the queue
     @discord.ui.button(label="Leave Queue",
                        style=discord.ButtonStyle.danger,
                        custom_id="leave_queue")
@@ -26,15 +30,16 @@ class QueueView(View):
                                  button: Button):
         await handle_leave_queue(interaction, self.channel_id)
 
+    # Button for viewing the leaderboard
     @discord.ui.button(label="Leaderboard",
                        style=discord.ButtonStyle.secondary,
                        custom_id="leaderboard")
     async def leaderboard_button(self, interaction: discord.Interaction,
                                  button: Button):
-        await interaction.response.send_message(
-            "Leaderboard feature not implemented yet.", ephemeral=True)
+        await handle_leaderboard(interaction, self.channel_id)
 
 
+# Function to initialize queues for each channel
 async def initialize_queues(bot, channel_info):
     for info in channel_info:
         channel = bot.get_channel(info["channel_id"])
@@ -53,24 +58,29 @@ async def initialize_queues(bot, channel_info):
             if user is not None:
                 queue_members.append(user)
 
+        # Store the queue information in the queues dictionary
         queues[info["channel_id"]] = {
             "title": info["title"],
             "queue": queue_members,
             "max_players": info["max_players"],
             "message_id": None
         }
+
+        # Send the initial queue message and store its ID
         message = await channel.send(embed=create_queue_embed(
             info["channel_id"]),
                                      view=QueueView(info["channel_id"]))
         queues[info["channel_id"]]["message_id"] = message.id
 
 
+# Function to delete previous bot messages in a channel
 async def delete_bot_messages(channel):
     async for message in channel.history(limit=100):
         if message.author == channel.guild.me:
             await message.delete()
 
 
+# Function to create an embed for the queue status
 def create_queue_embed(channel_id):
     queue_info = queues[channel_id]
     embed = discord.Embed(title=queue_info["title"], color=discord.Color.red())
@@ -80,6 +90,7 @@ def create_queue_embed(channel_id):
     return embed
 
 
+# Function to format the queue into a readable string
 def format_queue(channel_id):
     queue = queues[channel_id]["queue"]
     if not queue:
@@ -87,6 +98,7 @@ def format_queue(channel_id):
     return "\n".join(f"<@{member.id}>" for member in queue)
 
 
+# Function to handle a user joining the queue
 async def handle_join_queue(interaction: discord.Interaction, channel_id):
     user = interaction.user
     queue_info = queues[channel_id]
@@ -110,6 +122,7 @@ async def handle_join_queue(interaction: discord.Interaction, channel_id):
                                             ephemeral=True)
 
 
+# Function to handle a user leaving the queue
 async def handle_leave_queue(interaction: discord.Interaction, channel_id):
     user = interaction.user
     queue = queues[channel_id]["queue"]
@@ -122,8 +135,29 @@ async def handle_leave_queue(interaction: discord.Interaction, channel_id):
                                             ephemeral=True)
 
 
+# Function to update the queue message with the current queue status
 async def update_queue_message(channel, channel_id):
     message_id = queues[channel_id]["message_id"]
     message = await channel.fetch_message(message_id)
     await message.edit(embed=create_queue_embed(channel_id),
                        view=QueueView(channel_id))
+
+
+# Function to handle displaying the leaderboard
+async def handle_leaderboard(interaction: discord.Interaction, channel_id):
+    queue_info = queues[channel_id]
+    game_name = queue_info["title"].split()[0].lower(
+    )  # Extract the game name from the title
+    leaderboard_data = get_leaderboard(game_name)
+    if not leaderboard_data:
+        await interaction.response.send_message(
+            f"No data available for the {game_name.capitalize()} leaderboard.",
+            ephemeral=True)
+    else:
+        leaderboard_message = f"**{game_name.capitalize()} Leaderboard**\n"
+        for user_id, wins in leaderboard_data:
+            user = await interaction.client.fetch_user(user_id)
+            display_name = user.global_name
+            leaderboard_message += f"{display_name}: {wins} wins\n"
+        await interaction.response.send_message(leaderboard_message,
+                                                ephemeral=True)
