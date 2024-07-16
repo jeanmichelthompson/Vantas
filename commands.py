@@ -1,4 +1,3 @@
-import discord
 from replitdb import update_rank, get_leaderboard, check_rank, clear_rank, set_rank
 import config
 from replit import db
@@ -6,14 +5,19 @@ from replit import db
 # Main function to handle incoming messages
 async def handle_message(bot, message):
     msg = message.content
+    
+    # Define a dictionary to map keywords to their respective responses
+    keyword_responses = {
+        'genji': 'buff genji',
+        'mercy': 'boosted',
+        'ridge': 'i miss that guy',
+    }
 
-    # Respond to messages that contain keywords
-    if 'genji' in msg.lower():
-        await message.channel.send('buff genji')
-
-    if 'mercy' in msg.lower():
-        await message.channel.send('boosted')
-        
+    # Check for keywords in the message and respond accordingly
+    for keyword, response in keyword_responses.items():
+        if keyword in msg.lower():
+            await message.channel.send(response)
+    
     # Define a dictionary to map commands to their respective handler functions
     commands = {
         "!win": log_win_command,
@@ -107,6 +111,12 @@ async def rank_command(bot, message):
         target_user_id = msg.split("!rank ", 1)[1]
     else:
         target_user_id = str(message.author.id)
+
+    # Validate that target_user_id is a valid snowflake
+    if not target_user_id.isdigit() or not (17 <= len(target_user_id) <= 19):
+        await message.channel.send("Invalid user ID.")
+        return
+
     rank_data = check_rank(target_user_id)
     display_name = (await bot.fetch_user(target_user_id)).global_name
     if rank_data:
