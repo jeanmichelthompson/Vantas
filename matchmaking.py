@@ -39,9 +39,23 @@ async def initialize_queues(bot, channel_info):
     for info in channel_info:
         channel = bot.get_channel(info["channel_id"])
         await delete_bot_messages(channel)  # Delete previous bot messages
+
+        # Load the queue state from the database if it exists
+        if str(info["channel_id"]) in db.keys():
+            queue_state = db[str(info["channel_id"])]
+        else:
+            queue_state = []
+
+        # Ensure user IDs are integers and filter out any None values (users that could not be found)
+        queue_members = []
+        for user_id in queue_state:
+            user = await bot.fetch_user(int(user_id))
+            if user is not None:
+                queue_members.append(user)
+
         queues[info["channel_id"]] = {
             "title": info["title"],
-            "queue": [],
+            "queue": queue_members,
             "max_players": info["max_players"],
             "message_id": None
         }
@@ -81,12 +95,16 @@ async def handle_join_queue(interaction: discord.Interaction, channel_id):
 
     if user not in queue:
         queue.append(user)
+        # Save the updated queue state to the database
+        db[str(channel_id)] = [member.id for member in queue]
         await update_queue_message(interaction.channel, channel_id)
         if len(queue) == max_players:
             await interaction.channel.send("Match is ready! " +
                                            ", ".join(member.mention
                                                      for member in queue))
             queue.clear()
+            # Clear the queue state in the database
+            db[str(channel_id)] = []
             await update_queue_message(interaction.channel, channel_id)
     await interaction.response.send_message("You have joined the queue.",
                                             ephemeral=True)
@@ -97,6 +115,8 @@ async def handle_leave_queue(interaction: discord.Interaction, channel_id):
     queue = queues[channel_id]["queue"]
     if user in queue:
         queue.remove(user)
+        # Save the updated queue state to the database
+        db[str(channel_id)] = [member.id for member in queue]
         await update_queue_message(interaction.channel, channel_id)
     await interaction.response.send_message("You have left the queue.",
                                             ephemeral=True)

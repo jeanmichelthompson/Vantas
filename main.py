@@ -90,8 +90,7 @@ async def on_message(message):
     if msg.startswith("!leaderboard"):
         if len(msg.split()) > 1:
             game_name = msg.split("!leaderboard ", 1)[1].lower()
-            game_name_display = game_name.capitalize(
-            )  # Convert to first letter uppercase for display
+            game_name_display = game_name.capitalize()
             leaderboard_data = get_leaderboard(game_name)
             if not leaderboard_data:
                 await message.channel.send(
