@@ -52,3 +52,13 @@ def clear_rank(user_id: str):
     print(f"Clearing wins for user_id: {user_id}")
     if user_id in db.keys():
         del db[user_id]
+
+def set_rank(user_id: str, game_name: str, rank: int):
+    print(f"Setting rank for user_id: {user_id}, game_name: {game_name}, rank: {rank}")
+    if user_id in db.keys():
+        user_data = db[user_id]
+        user_data[game_name] = rank
+        db[user_id] = user_data
+    else:
+        db[user_id] = {game_name: rank}
+    print(f"Updated data for user {user_id}: {db[user_id]}")

@@ -3,7 +3,7 @@ import os
 from discord.ext import commands
 from keep_alive import keep_alive
 from matchmaking import QueueView, initialize_queues
-from replitdb import log_win, log_loss, get_leaderboard, check_rank, clear_rank
+from replitdb import log_win, log_loss, get_leaderboard, check_rank, clear_rank, set_rank
 from replit import db
 
 # Initialize the bot with necessary intents
@@ -151,6 +151,32 @@ async def on_message(message):
                 clear_rank(target_user_id)
                 await message.channel.send(
                     f"Rank cleared for user {target_user_id}.")
+        else:
+            await message.channel.send(
+                "You do not have permission to use this command.")
+
+    # Command to set individual rank for a player by user ID
+    if msg.startswith("!setrank"):
+        if has_og_role(message.author):
+            parts = msg.split()
+            if len(parts) == 4:
+                target_user_id = parts[1]
+                display_name = (await bot.fetch_user(target_user_id)).global_name
+                game_name = parts[2].lower()
+                rank = int(parts[3])
+                if game_name in games:
+                    set_rank(target_user_id, game_name, rank)
+                    await message.channel.send(
+                        f"Rank set to {rank} for user {display_name} in game {game_name.capitalize()}."
+                    )
+                else:
+                    await message.channel.send(
+                        f"Invalid game name. Available games: {', '.join(g.capitalize() for g in games)}"
+                    )
+            else:
+                await message.channel.send(
+                    "Invalid usage. Usage: !setrank <user_id> <game_name> <rank>"
+                )
         else:
             await message.channel.send(
                 "You do not have permission to use this command.")
