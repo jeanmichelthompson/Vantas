@@ -19,11 +19,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Flyctl
-        run: |
-          curl -L https://fly.io/install.sh | sh
-          export PATH=$HOME/.fly/bin:$PATH
-        shell: bash
-        
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy to Fly.io
         run: flyctl deploy --remote-only
