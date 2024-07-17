@@ -1,6 +1,5 @@
-from replitdb import update_rank, get_leaderboard, check_rank, clear_rank, set_rank
 import config
-from replit import db
+from supabase_client import check_database, update_rank, get_leaderboard, check_rank, clear_rank, set_rank
 
 # Main function to handle incoming messages
 async def handle_message(bot, message):
@@ -24,11 +23,11 @@ async def handle_message(bot, message):
         "!loss": log_loss_command,
         "!leaderboard": leaderboard_command,
         "!checkdb": checkdb_command,
-        "!cleardb": cleardb_command,
         "!rank": rank_command,
         "!clearrank": clearrank_command,
         "!setrank": setrank_command,
         "!help": help_command,
+        "!test": test_command,
     }
 
     # Split the message to get the command and arguments
@@ -38,6 +37,10 @@ async def handle_message(bot, message):
     if command in commands:
         # Call the appropriate function from the dictionary
         await commands[command](bot, message)
+
+# Function to test the bot
+async def test_command(bot, message):
+    await message.channel.send("Test successful!")
 
 # Function to log a win
 async def log_win_command(bot, message):
@@ -90,17 +93,15 @@ async def leaderboard_command(bot, message):
 # Function to check the current database
 async def checkdb_command(bot, message):
     if has_og_role(message.author):
-        for key in db.keys():
-            await message.channel.send(f"{key}: {db[key]}")
-    else:
-        await message.channel.send("You do not have permission to use this command.")
-
-# Function to clear the database
-async def cleardb_command(bot, message):
-    if has_og_role(message.author):
-        for key in db.keys():
-            del db[key]
-        await message.channel.send("Database cleared.")
+        try:
+            users = check_database()
+            if users:
+                for user in users:
+                    await message.channel.send(f"{user}")
+            else:
+                await message.channel.send("No data found in the database.")
+        except Exception as e:
+            await message.channel.send(f"An error occurred: {str(e)}")
     else:
         await message.channel.send("You do not have permission to use this command.")
 
@@ -170,7 +171,6 @@ async def help_command(bot, message):
         "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
         "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
         "!checkdb - Check the current database (Admin)\n"
-        "!cleardb - Clear the database (Admin)\n"
     )
     await message.channel.send(help_message)
 

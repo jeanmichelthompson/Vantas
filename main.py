@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from keep_alive import keep_alive
 from matchmaking import initialize_queues
 from commands import handle_message
 import config
@@ -23,7 +22,5 @@ async def on_message(message):
         return
     await handle_message(bot, message)
 
-# Keep the bot alive (necessary for hosting on Replit)
-keep_alive()
 # Run the bot with the token from environment variables
 bot.run(config.DISCORD_TOKEN)
