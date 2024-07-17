@@ -21,7 +21,9 @@ jobs:
       - name: Install Flyctl
         run: |
           curl -L https://fly.io/install.sh | sh
-          export PATH=$PATH:$HOME/.fly/bin
+          export PATH=$HOME/.fly/bin:$PATH
+        shell: bash
+        
 
       - name: Deploy to Fly.io
         run: flyctl deploy --remote-only
