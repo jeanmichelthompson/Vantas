@@ -2,4 +2,3 @@ supabase
 python-dotenv
 poetry
 discord.py
-os
