@@ -40,7 +40,7 @@ async def handle_message(bot, message):
 
 # Function to test the bot
 async def test_command(bot, message):
-    await message.channel.send("Test successful!")
+    await message.channel.send("Test!")
 
 # Function to log a win
 async def log_win_command(bot, message):
