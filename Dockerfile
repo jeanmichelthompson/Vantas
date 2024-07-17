@@ -1,9 +1,19 @@
 FROM python:3.12.3
-RUN pip install poetry
-RUN pip install supabase
-RUN pip install python-dotenv
+
+# Install dependencies
+RUN pip install poetry supabase python-dotenv
+
+# Set working directory
 WORKDIR /code
+
+# Copy dependency files
 COPY pyproject.toml poetry.lock /code/
-RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
-COPY . /code
-CMD python main.py
+
+# Install project dependencies
+RUN poetry install
+
+# Copy project files
+COPY . /code/
+
+# Command to run the application
+CMD ["python", "main.py"]
