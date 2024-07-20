@@ -35,13 +35,14 @@ async def handle_message(bot, message):
         'genji': 'genji',
         'mercy': 'mercy',
         'ridge': 'ridge',
+        'gpttest': 'chat',
     }
 
     # Check for keywords in the message and respond accordingly
     for keyword, response_type in keyword_response_types.items():
         if keyword in msg.lower():
             user_context = f"User: {message.author.global_name}"
-            response, _ = gpt_response(keyword, user_context, response_type)
+            response = gpt_response(keyword, user_context, response_type)
             await message.channel.send(response)
             return
 
@@ -51,15 +52,15 @@ async def handle_message(bot, message):
         original_message = await message.channel.fetch_message(message.reference.message_id)
         # Check if the original message was sent by the bot
         if original_message.author == bot.user:
-            user_context = f"User: {message.author.display_name}\n\nOriginal Message: {original_message.content}"
-            response, _ = gpt_response(msg, user_context, "reply")
+            user_context = f"User: {message.author.global_name}"
+            response = gpt_response(msg, user_context, "reply", original_message.content)
             await message.channel.send(response)
             return
 
     # If the message is neither a command nor a keyword, give it a one in twenty chance to call gpt_response
     if random.randint(1, 20) == 1:
         user_context = f"User: {message.author.global_name}"
-        response, _ = gpt_response(msg, user_context, "chat")
+        response = gpt_response(msg, user_context, "chat")
         await message.channel.send(response)
 
 # Function to test the bot
@@ -188,7 +189,7 @@ async def gpt_command(bot, message):
     msg = message.content
     prompt = msg[len("!vantas "):].strip()
     user_context = f"User: {message.author.global_name}"
-    response, _ = gpt_response(prompt, user_context)
+    response = gpt_response(prompt, user_context)
     await message.channel.send(response)
 
 # Function to show the help message
