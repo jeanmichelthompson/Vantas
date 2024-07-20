@@ -1,21 +1,11 @@
+import random
 import config
 from supabase_client import check_database, update_rank, get_leaderboard, check_rank, clear_rank, set_rank
+from openai_client import gpt_response
 
 # Main function to handle incoming messages
 async def handle_message(bot, message):
     msg = message.content
-    
-    # Define a dictionary to map keywords to their respective responses
-    keyword_responses = {
-        'genji': 'buff genji',
-        'mercy': 'boosted',
-        'ridge': 'i miss that guy',
-    }
-
-    # Check for keywords in the message and respond accordingly
-    for keyword, response in keyword_responses.items():
-        if keyword in msg.lower():
-            await message.channel.send(response)
     
     # Define a dictionary to map commands to their respective handler functions
     commands = {
@@ -26,6 +16,7 @@ async def handle_message(bot, message):
         "!rank": rank_command,
         "!clearrank": clearrank_command,
         "!setrank": setrank_command,
+        "!vantas": gpt_command,
         "!help": help_command,
         "!test": test_command,
     }
@@ -37,6 +28,39 @@ async def handle_message(bot, message):
     if command in commands:
         # Call the appropriate function from the dictionary
         await commands[command](bot, message)
+        return
+
+    # Define a dictionary to map keywords to their respective response types
+    keyword_response_types = {
+        'genji': 'genji',
+        'mercy': 'mercy',
+        'ridge': 'ridge',
+    }
+
+    # Check for keywords in the message and respond accordingly
+    for keyword, response_type in keyword_response_types.items():
+        if keyword in msg.lower():
+            user_context = f"User: {message.author.global_name}"
+            response, _ = gpt_response(keyword, user_context, response_type)
+            await message.channel.send(response)
+            return
+
+    # If the message is a reply to another message
+    if message.reference:
+        # Retrieve the original message
+        original_message = await message.channel.fetch_message(message.reference.message_id)
+        # Check if the original message was sent by the bot
+        if original_message.author == bot.user:
+            user_context = f"User: {message.author.display_name}\n\nOriginal Message: {original_message.content}"
+            response, _ = gpt_response(msg, user_context, "reply")
+            await message.channel.send(response)
+            return
+
+    # If the message is neither a command nor a keyword, give it a one in twenty chance to call gpt_response
+    if random.randint(1, 20) == 1:
+        user_context = f"User: {message.author.global_name}"
+        response, _ = gpt_response(msg, user_context, "chat")
+        await message.channel.send(response)
 
 # Function to test the bot
 async def test_command(bot, message):
@@ -159,6 +183,14 @@ async def setrank_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
+# Function to handle the gpt command
+async def gpt_command(bot, message):
+    msg = message.content
+    prompt = msg[len("!vantas "):].strip()
+    user_context = f"User: {message.author.global_name}"
+    response, _ = gpt_response(prompt, user_context)
+    await message.channel.send(response)
+
 # Function to show the help message
 async def help_command(bot, message):
     help_message = (
@@ -171,6 +203,7 @@ async def help_command(bot, message):
         "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
         "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
         "!checkdb - Check the current database (Admin)\n"
+        "!vantas <message> - Talk to Vantas directly"
     )
     await message.channel.send(help_message)
 

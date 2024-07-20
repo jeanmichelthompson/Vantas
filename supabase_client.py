@@ -31,8 +31,8 @@ def get_leaderboard(game_name: str):
     return leaderboard_data
 
 def check_rank(user_id: str):
-    response = supabase.table('users').select('*').eq('user_id', user_id).single().execute()
-    return response.data if response.data else None
+    response = supabase.table('users').select('*').eq('user_id', user_id).execute()
+    return response.data[0] if response.data else None
 
 def clear_rank(user_id: str):
     # Set all game columns to 0 for the specified user
