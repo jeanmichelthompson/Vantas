@@ -24,18 +24,19 @@ def gpt_response(prompt, user_context="", response_type="general"):
     if response_type == "chat":
         instructions = "Provide a response that starts with something loosely related to the user's message but quickly diverges into unhinged, conspiracy-esque nonsense. Feel free to address the user directly, make wild claims, and be crass or offensive. Three sentences maximum, but occasionally just one sentence is enough."
     if response_type == "reply":
-        instructions = "This user is responding to the original message sent to you. Send them a one sentence response back that continues the conversation in a sarcastic or humorous way. Keep it brief and to the point."
+        instructions = "This user is responding to the original message sent by you. Send them a one sentence response back that continues the conversation. Keep it brief and to the point."
     elif response_type == "genji":
-        instructions = "If the user is saying something negative about genji, mock them relentlessly. Otheriwse, provide a response that laments the state of Genji in the current meta, expresses a desire for buffs to the hero, and optionally directly addresses the user if relevant. Keep the response to one sentence only."
+        instructions = "If the user message is saying something negative about genji, mock them relentlessly. Otheriwse, provide a response that laments the state of Genji in the current meta, expresses a desire for buffs to the hero, and optionally directly addresses the user if relevant. Keep the response to one sentence only."
     elif response_type == "mercy":
         instructions = "Provide a response that references Mercy players as 'boosted' and includes a sarcastic or humorous comment about the hero. Direct your comment to the particular user only if their message indicates they play Mercy, otherwise keep the response more general. Keep the response to one sentence only."
     elif response_type == "ridge":
         instructions = "Provide a response that expresses a sense of nostalgia or longing for a person named 'Ridge.' If the user who sent the prompt is indeed Ridge or Partridge, instead express the nostalgia or longing directly to the user. Keep the response to one sentence only."
     else:
-        instructions = "Keep your response brief, usually one sentence only. Occasionally two. Respond very dryly."
+        instructions = "Keep your response brief, usually one sentence only. Occasionally two."
 
     # System instructions to mimic internet user typing habits
     system_instructions = """
+    You are a discord bot that receives a User Message and provides a response based on the instructions given in the "Instructions" section. Before responding, evaluate the User Message and the Instructions and determine what type of response is needed.
     When responding, mimic the typing habits of a typical internet user on platforms like Discord or Twitter:
     - Use informal language and a sarcastic, sardonic, condescending, especially dry tone.
     - Type almost entirely in lower case. Use upper case extremely sparingly for emphasis.
@@ -51,7 +52,7 @@ def gpt_response(prompt, user_context="", response_type="general"):
 
     # Add the system instructions and user prompt to the conversation history
     conversation_history.append({"role": "system", "content": system_instructions})
-    conversation_history.append({"role": "user", "content": f"Context: {user_context}\n\nPrompt: {prompt}\n\n{instructions}"})
+    conversation_history.append({"role": "user", "content": f"Context: {user_context}\n\nUser Message: {prompt}\n\nInstructions: {instructions}"})
 
     # Limit the conversation history to the last 4 messages (2 exchanges)
     if len(conversation_history) > 4:
