@@ -24,9 +24,9 @@ def gpt_response(prompt, user_context="", response_type="general"):
     if response_type == "chat":
         instructions = "Provide a response that starts with something loosely related to the user's message but quickly diverges into unhinged, conspiracy-esque nonsense. Feel free to address the user directly, make wild claims, and be crass or offensive. Three sentences maximum, but occasionally just one sentence is enough."
     if response_type == "reply":
-        instructions = "This user is responding to the original message sent me you. Send them a one sentence response back that continues the conversation in a sarcastic or humorous way. Keep it brief and to the point."
+        instructions = "This user is responding to the original message sent to you. Send them a one sentence response back that continues the conversation in a sarcastic or humorous way. Keep it brief and to the point."
     elif response_type == "genji":
-        instructions = "Provide a response that laments the state of Genji in the current meta, expresses a desire for buffs to the hero, and optionally directly addresses the user if relevant. Keep the response to one sentence only."
+        instructions = "If the user is saying something negative about genji, mock them relentlessly. Otheriwse, provide a response that laments the state of Genji in the current meta, expresses a desire for buffs to the hero, and optionally directly addresses the user if relevant. Keep the response to one sentence only."
     elif response_type == "mercy":
         instructions = "Provide a response that references Mercy players as 'boosted' and includes a sarcastic or humorous comment about the hero. Direct your comment to the particular user only if their message indicates they play Mercy, otherwise keep the response more general. Keep the response to one sentence only."
     elif response_type == "ridge":
