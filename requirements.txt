@@ -2,3 +2,4 @@ supabase
 python-dotenv
 poetry
 discord.py
+openai

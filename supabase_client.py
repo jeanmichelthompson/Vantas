@@ -1,12 +1,8 @@
-import os
-from dotenv import load_dotenv
+import config
 from supabase import create_client, Client
 
-# Load environment variables from .env file
-load_dotenv()
-
-url = os.getenv("SUPABASE_URL")
-key = os.getenv("SUPABASE_KEY")
+url = config.SUPABASE_URL
+key = config.SUPABASE_KEY
 supabase: Client = create_client(url, key)
 
 # Function to update the rank (score) of a user in a specific game based on the action (win or lose)
