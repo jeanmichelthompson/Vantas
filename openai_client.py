@@ -75,10 +75,6 @@ def gpt_response(prompt, user_name="", response_type="general", original_message
         message = "Sorry, something went wrong with the response."
         print(f"Error: {e}")
 
-    print("Message stored in conversation history")
-    for item in conversation_history:
-        print(item)
-
     return message
 
 def store_message(message_content, user_name):
@@ -90,7 +86,3 @@ def store_message(message_content, user_name):
     # Limit the conversation history to the last 50 messages
     if len(conversation_history) > 50:
         conversation_history = conversation_history[-50:]
-    
-    print("Message stored in conversation history")
-    for item in conversation_history:
-        print(item)
