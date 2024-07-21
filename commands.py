@@ -1,7 +1,7 @@
 import random
 import config
 from supabase_client import check_database, update_rank, get_leaderboard, check_rank, clear_rank, set_rank
-from openai_client import gpt_response
+from openai_client import gpt_response, store_message
 
 # Main function to handle incoming messages
 async def handle_message(bot, message):
@@ -41,8 +41,7 @@ async def handle_message(bot, message):
     # Check for keywords in the message and respond accordingly
     for keyword, response_type in keyword_response_types.items():
         if keyword in msg.lower():
-            user_context = f"User: {message.author.global_name}"
-            response = gpt_response(keyword, user_context, response_type)
+            response = gpt_response(msg, message.author.global_name, response_type)
             await message.channel.send(response)
             return
 
@@ -52,16 +51,17 @@ async def handle_message(bot, message):
         original_message = await message.channel.fetch_message(message.reference.message_id)
         # Check if the original message was sent by the bot
         if original_message.author == bot.user:
-            user_context = f"User: {message.author.global_name}"
-            response = gpt_response(msg, user_context, "reply", original_message.content)
+            response = gpt_response(msg, message.author.global_name, "reply", original_message.content)
             await message.channel.send(response)
             return
 
     # If the message is neither a command nor a keyword, give it a one in twenty chance to call gpt_response
     if random.randint(1, 20) == 1:
-        user_context = f"User: {message.author.global_name}"
-        response = gpt_response(msg, user_context, "chat")
+        response = gpt_response(msg, message.author.global_name, "chat")
         await message.channel.send(response)
+    
+    # Store the message in the conversation history
+    store_message(msg, message.author.global_name)
 
 # Function to test the bot
 async def test_command(bot, message):
@@ -188,8 +188,7 @@ async def setrank_command(bot, message):
 async def gpt_command(bot, message):
     msg = message.content
     prompt = msg[len("!vantas "):].strip()
-    user_context = f"User: {message.author.global_name}"
-    response = gpt_response(prompt, user_context)
+    response = gpt_response(prompt, message.author.global_name)
     await message.channel.send(response)
 
 # Function to show the help message
