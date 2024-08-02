@@ -7,7 +7,7 @@ client = OpenAI(api_key=config.OPENAI_KEY)
 conversation_history = []
 
 def gpt_response(prompt, user_name="", response_type="general", original_message=None):
-
+    print(f"Prompt: {prompt}, User Name: {user_name}, Response Type: {response_type}, Original Message: {original_message}")
     # Define specific instructions based on the response type
     if response_type == "chat":
         specific_instructions = "Provide a response that starts with something loosely related to the user's message but quickly diverges into unhinged, conspiracy-esque nonsense. Feel free to address the user directly, make wild claims, and be crass or offensive. Three sentences maximum."
