@@ -1,5 +1,6 @@
 import config
 from supabase import create_client, Client
+from datetime import datetime, timedelta, timezone
 
 url = config.SUPABASE_URL
 key = config.SUPABASE_KEY
@@ -66,4 +67,38 @@ def get_queue_data(channel_id):
 def update_queue_data(channel_id, data):
     response = supabase.table('queues').upsert(data).execute()
     return response
+
+def increment_ping_if_due():
+    try:
+        # Fetch the latest ping record
+        response = supabase.table('ping').select('*').order('updated_at', desc=True).limit(1).execute()
+
+        if response.data:
+            ping_record = response.data[0]
+            updated_at = datetime.fromisoformat(ping_record['updated_at'].replace('Z', '+00:00'))
+            current_time = datetime.now(timezone.utc)
+            
+            # Check if more than a day has passed
+            if current_time > updated_at + timedelta(days=1):
+                # Update the ping count and updated_at timestamp
+                new_ping_value = ping_record['ping'] + 1
+                supabase.table('ping').update({
+                    'ping': new_ping_value,
+                    'updated_at': 'now()',
+                }).eq('id', ping_record['id']).execute()
+                print(f"Ping incremented to {new_ping_value} and updated_at set to current time.")
+            else:
+                print("Less than a day has passed since the last update. No update necessary.")
+        else:
+            # No records exist, so insert a new record
+            supabase.table('ping').insert({
+                'ping': 1,
+                'created_at': 'now()',
+                'updated_at': 'now()'
+            }).execute()
+            print("No records found. New ping record created with ping = 1.")
+
+    except Exception as e:
+        print(f"Error updating ping: {e}")
+
 

@@ -55,8 +55,8 @@ async def handle_message(bot, message):
             await message.channel.send(response)
             return
 
-    # If the message is neither a command nor a keyword, give it a one in twenty chance to call gpt_response
-    if random.randint(1, 20) == 1:
+    # If the message is neither a command nor a keyword, give it a one in fifty chance to call gpt_response
+    if random.randint(1, 50) == 1:
         response = gpt_response(msg, message.author.global_name, "chat")
         await message.channel.send(response)
     

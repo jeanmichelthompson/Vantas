@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 from matchmaking import initialize_queues
 from commands import handle_message
+import asyncio
+from supabase_client import increment_ping_if_due
 import config
 
 # Initialize the bot with necessary intents
@@ -14,6 +16,15 @@ bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=intents)
 async def on_ready():
     print(f'Logged in as {bot.user}')
     await initialize_queues(bot, config.CHANNEL_INFO)
+    bot.loop.create_task(schedule_ping_update())
+
+async def schedule_ping_update():
+    while True:
+        try:
+            await increment_ping_if_due()
+        except Exception as e:
+            print(f"Error in increment_ping_if_due: {e}")
+        await asyncio.sleep(86400)
 
 # Event handler for when a message is received
 @bot.event
