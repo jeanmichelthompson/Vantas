@@ -20,11 +20,8 @@ async def on_ready():
 
 async def schedule_ping_update():
     while True:
-        try:
-            await increment_ping_if_due()
-        except Exception as e:
-            print(f"Error in increment_ping_if_due: {e}")
-        await asyncio.sleep(86400)
+        increment_ping_if_due()
+        await asyncio.sleep(86400) 
 
 # Event handler for when a message is received
 @bot.event

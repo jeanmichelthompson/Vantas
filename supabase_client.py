@@ -28,7 +28,7 @@ def update_rank(user_id: str, game_name: str, action: str):
 
 def get_leaderboard(game_name: str):
     response = supabase.table('users').select('user_id', game_name).order(game_name, desc=True).execute()
-    leaderboard_data = [(record['user_id'], record[game_name]) for record in response.data if record[game_name] > 0]
+    leaderboard_data = [(record['user_id'], record[game_name]) for record in response.data]
     return leaderboard_data
 
 def check_rank(user_id: str):
