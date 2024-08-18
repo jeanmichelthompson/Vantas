@@ -32,10 +32,11 @@ class QueueView(View):
         await handle_leaderboard(interaction, self.channel_id)
 
 class TeamManagementView(View):
-    def __init__(self, team_a, team_b):
+    def __init__(self, team_a, team_b, game_name: str):
         super().__init__()
         self.team_a = team_a
         self.team_b = team_b
+        self.game_name = game_name  # Store the game name
         self.update_buttons()
 
     def update_buttons(self):
@@ -49,8 +50,8 @@ class TeamManagementView(View):
         for player, _ in self.team_b:
             self.add_item(MovePlayerButton(player, "B", "A", self))
 
-        # Add the confirm button
-        self.add_item(ConfirmTeamsButton(self))
+        # Add the confirm button and pass the game name
+        self.add_item(ConfirmTeamsButton(self, self.game_name))
 
 class MovePlayerButton(Button):
     def __init__(self, player, from_team, to_team, team_view):
@@ -76,13 +77,16 @@ class MovePlayerButton(Button):
         self.team_view.update_buttons()
         await interaction.response.edit_message(embed=create_team_embed(self.team_view.team_a, self.team_view.team_b), view=self.team_view)
 
-
 class ConfirmTeamsButton(Button):
-    def __init__(self, team_view):
+    def __init__(self, team_view, game_name: str):
         super().__init__(label="Confirm Teams", style=discord.ButtonStyle.success)
         self.team_view = team_view
+        self.game_name = game_name
 
     async def callback(self, interaction: discord.Interaction):
+        # Defer the interaction to allow more time to process
+        await interaction.response.defer()
+
         # Combine all players from both teams
         all_players = self.team_view.team_a + self.team_view.team_b
 
@@ -97,7 +101,7 @@ class ConfirmTeamsButton(Button):
         # Create the confirmation embed with the teams, their average ranks, and overall rank range
         embed = discord.Embed(
             title="Match Confirmed!",
-            description=f"**Rank Range:** {min_rank} -> {max_rank}\n\n\n\n",
+            description=f"**Rank Range:** {min_rank} -> {max_rank}",
             color=discord.Color.green()
         )
         embed.add_field(
@@ -112,11 +116,119 @@ class ConfirmTeamsButton(Button):
         )
         embed.set_footer(text="Good luck to both teams!")
 
-        # Send the confirmation embed
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        # Insert match details into Supabase and store the match ID
+        from supabase_client import insert_match
+        team1 = [str(player.id) for player, _ in self.team_view.team_a]
+        team2 = [str(player.id) for player, _ in self.team_view.team_b]
+        match_id = insert_match(team1, team2, self.game_name)  # Store the match ID
+
+        # Use followup.send to capture the message ID correctly
+        match_message = await interaction.followup.send(embed=embed, ephemeral=False)
+        match_message_id = match_message.id  # Store the Discord message ID
+
+        # Now pass the match_message_id when creating MatchCompleteView
+        await match_message.edit(view=MatchCompleteView(match_id, self.team_view.team_a, self.team_view.team_b, self.game_name, match_message_id))
 
         # Delete the original team management message
         await interaction.message.delete()
+
+class MatchCompleteView(View):
+    def __init__(self, match_id, team_a, team_b, game_name, match_message_id):
+        super().__init__(timeout=None)
+        self.match_id = match_id
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.match_message_id = match_message_id  # Store the Discord message ID
+        self.add_item(MatchCompleteButton(match_id, team_a, team_b, game_name, match_message_id))
+
+class MatchCompleteButton(Button):
+    def __init__(self, match_id, team_a, team_b, game_name, match_message_id):
+        super().__init__(label="Match Complete", style=discord.ButtonStyle.primary)
+        self.match_id = match_id
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.match_message_id = match_message_id  # Store the Discord message ID
+
+    async def callback(self, interaction: discord.Interaction):
+        # Create the embed to ask which team won
+        embed = discord.Embed(
+            title="Select the Winning Team",
+            description="Please select the team that won the match.",
+            color=discord.Color.gold()
+        )
+        # Provide buttons to select the winning team
+        await interaction.response.send_message(
+            embed=embed,
+            view=SelectWinnerView(self.team_a, self.team_b, self.match_message_id, self.game_name, self.match_id),
+            ephemeral=False
+        )
+
+class SelectWinnerView(View):
+    def __init__(self, team_a, team_b, match_message_id, game_name, match_id):
+        super().__init__(timeout=None)
+        self.match_id = match_id
+        self.team_a = team_a
+        self.team_b = team_b
+        self.match_message_id = match_message_id  # Store the Discord message ID
+        self.add_item(SelectWinnerButton("Team A", self.team_a, self.team_a, self.team_b, match_message_id, game_name, self.match_id))
+        self.add_item(SelectWinnerButton("Team B", self.team_b, self.team_a, self.team_b, match_message_id, game_name, self.match_id))
+
+class SelectWinnerButton(Button):
+    def __init__(self, team_name, team, team_a, team_b, match_message_id, game_name, match_id):
+        super().__init__(label=f"{team_name} Wins", style=discord.ButtonStyle.success)
+        self.team_name = team_name
+        self.team = team
+        self.team_a = team_a
+        self.team_b = team_b
+        self.match_message_id = match_message_id
+        self.game_name = game_name
+        self.match_id = match_id
+
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            # Attempt to delete the "Select Winning Team" embed
+            await interaction.message.delete()
+        except discord.errors.NotFound:
+            # The message might have already been deleted; handle this gracefully
+            pass
+
+        try:
+            # Attempt to delete the original "Match Confirmed" embed using the stored Discord message ID
+            if self.match_message_id:
+                match_message = await interaction.channel.fetch_message(self.match_message_id)
+                if match_message:
+                    await match_message.delete()
+        except discord.errors.NotFound:
+            # The message might have already been deleted; handle this gracefully
+            pass
+        
+        # Announce the winner and print out the teams in an embed
+        team_a_names = "\n".join([player.mention for player, _ in self.team_a])
+        team_b_names = "\n".join([player.mention for player, _ in self.team_b])
+
+        embed = discord.Embed(
+            title=f"**{self.team_name} Wins!**",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="**Team A**", value=team_a_names, inline=True)
+        embed.add_field(name="**Team B**", value=team_b_names, inline=True)
+        await interaction.channel.send(embed=embed)
+
+        # Update the match in the database as complete
+        from supabase_client import update_match, update_rank
+
+        # Set the winner in the match record
+        update_match(self.match_id, self.team_name)
+
+        # Adjust ranks in the users table based on the winning and losing teams
+        for player, _ in self.team:
+            update_rank(player.id, self.game_name, "win")
+
+        losing_team = self.team_b if self.team_name == "Team A" else self.team_a
+        for player, _ in losing_team:
+            update_rank(player.id, self.game_name, "lose")
 
 def create_team_embed(team_a, team_b):
     embed = discord.Embed(title="Team Management", color=discord.Color.blue())

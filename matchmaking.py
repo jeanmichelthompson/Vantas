@@ -109,7 +109,7 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
     embed = create_team_embed(team_a, team_b)
     
     # Send the embed with buttons to edit and confirm the teams
-    await interaction.channel.send(embed=embed, view=TeamManagementView(team_a, team_b))
+    await interaction.channel.send(embed=embed, view=TeamManagementView(team_a, team_b, game_name))
 
 # Function to handle a user leaving the queue
 async def handle_leave_queue(interaction: discord.Interaction, channel_id):

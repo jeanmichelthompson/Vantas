@@ -101,4 +101,25 @@ def increment_ping_if_due():
     except Exception as e:
         print(f"Error updating ping: {e}")
 
+# Function to insert a new match into the matches table
+def insert_match(team1: list, team2: list, game: str, status: str = "ongoing"):
+    new_match = {
+        "team1": team1,
+        "team2": team2,
+        "game": game,
+        "status": status,
+        "winner": None  # Winner will be set once the match is complete
+    }
+    response = supabase.table('matches').insert(new_match).execute()
+    return response.data[0]["id"] if response.data else None
+
+# Function to update the match as complete and set the winner
+def update_match(match_id: str, winner: str):
+    response = supabase.table('matches').update({
+        "status": "complete",
+        "winner": winner
+    }).eq('id', match_id).execute()
+    return response
+
+
 
