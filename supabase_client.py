@@ -16,7 +16,7 @@ def update_rank(user_id: str, game_name: str, action: str):
     # Fetch the current rank of the user for the game
     response = supabase.table('users').select(game_name).eq('user_id', user_id).execute()
 
-    if len(response.data) == 0:  # User does not exist
+    if len(response.data) == 0: 
         # Insert new user data
         new_data = { "user_id": user_id, game_name: score_change }
         supabase.table('users').insert(new_data).execute()
@@ -108,7 +108,7 @@ def insert_match(team1: list, team2: list, game: str, status: str = "ongoing"):
         "team2": team2,
         "game": game,
         "status": status,
-        "winner": None  # Winner will be set once the match is complete
+        "winner": None
     }
     response = supabase.table('matches').insert(new_match).execute()
     
@@ -134,7 +134,7 @@ def update_user_matches(user_id: str, match_id: str):
     # Fetch the current matches array for the user
     response = supabase.table('users').select('matches').eq('user_id', user_id).execute()
     
-    if len(response.data) == 0:  # User does not exist
+    if len(response.data) == 0:
         # Insert new user data with the match ID
         new_data = {"user_id": user_id, "matches": [match_id]}
         supabase.table('users').insert(new_data).execute()
@@ -170,6 +170,15 @@ def update_replay_code(match_id: str, replay_code: str):
         "replay": replay_code
     }).eq('id', match_id).execute()
     return response
+
+# Function to check if a user is an organizer
+def is_organizer(user_id: str):
+    response = supabase.table('organizers').select('users').execute()
+    if response.data:
+        for record in response.data:
+            if user_id in record['users']:
+                return True
+    return False
 
 
 

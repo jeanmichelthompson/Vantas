@@ -1,6 +1,7 @@
 import discord
-from supabase_client import get_queue_data, update_queue_data, get_leaderboard, check_rank
+from supabase_client import get_queue_data, update_queue_data, get_leaderboard, check_rank, is_organizer
 from ui_components import QueueView, TeamManagementView, create_team_embed
+import random
 
 # Dictionary to hold queue information for each channel
 queues = {}
@@ -24,7 +25,8 @@ async def initialize_queues(bot, channel_info):
             "title": info["title"],
             "queue": queue_members,
             "max_players": info["max_players"],
-            "message_id": None
+            "message_id": None,
+            "organizer_id": None
         }
 
         # Send the initial queue message and store its ID
@@ -81,12 +83,29 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
     
     # Fetch player ranks from the database
     player_ranks = []
+    organizer_id = None
+
     for member in queue:
         rank_data = check_rank(str(member.id))
         if rank_data:
             player_ranks.append((member, rank_data[game_name]))
         else:
             player_ranks.append((member, 0))
+
+        # Check if the current member is an organizer
+        if not organizer_id and is_organizer(str(member.id)):
+            organizer_id = member.id
+
+    # If no organizer is found, choose a random player as the organizer
+    if not organizer_id:
+        organizer_id = random.choice(queue).id
+
+    # Get the Discord user object for the organizer
+    organizer = next((member for member in queue if member.id == organizer_id), None)
+
+    if organizer:
+        # Send a message mentioning the organizer
+        await interaction.channel.send(f"{organizer.mention} has been designated as the organizer for this match.")
 
     # Sort by rank in descending order
     player_ranks.sort(key=lambda x: x[1], reverse=True)
@@ -107,9 +126,9 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
 
     # Create an embed with the teams
     embed = create_team_embed(team_a, team_b)
-    
-    # Send the embed with buttons to edit and confirm the teams
-    await interaction.channel.send(embed=embed, view=TeamManagementView(team_a, team_b, game_name))
+
+    # Send the embed with buttons to edit and confirm the teams, pass the organizer ID
+    await interaction.channel.send(embed=embed, view=TeamManagementView(team_a, team_b, game_name, organizer_id=organizer_id))
 
 # Function to handle a user leaving the queue
 async def handle_leave_queue(interaction: discord.Interaction, channel_id):
@@ -138,7 +157,7 @@ async def update_queue_message(channel, channel_id):
 # Function to handle displaying the leaderboard
 async def handle_leaderboard(interaction: discord.Interaction, channel_id):
     queue_info = queues[channel_id]
-    game_name = queue_info["title"].split()[0].lower()  # Extract the game name from the title
+    game_name = queue_info["title"].split()[0].lower()
     leaderboard_data = get_leaderboard(game_name)
     if not leaderboard_data:
         await interaction.response.send_message(f"No data available for the {game_name.capitalize()} leaderboard.", ephemeral=True)
