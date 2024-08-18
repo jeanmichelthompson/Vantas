@@ -281,10 +281,33 @@ class FinishButton(Button):
         super().__init__(label="Finish", style=discord.ButtonStyle.danger)
 
     async def callback(self, interaction: discord.Interaction):
-        # Remove the Requeue and Finish buttons by editing the view
-        await interaction.message.edit(view=None)
-        await interaction.response.send_message("Match process finished.", ephemeral=True)
+        # Get the channel and the queue message ID to exclude from deletion
+        channel = interaction.channel
 
+        # Retrieve the original queue message ID from the channel's context
+        from matchmaking import queues
+        queue_info = queues.get(channel.id)
+        if not queue_info or not queue_info.get("message_id"):
+            await interaction.response.send_message("Could not find the original queue message.", ephemeral=True)
+            return
+
+        original_queue_message_id = queue_info["message_id"]
+
+        # Delete all messages in the channel except the original queue message
+        async for message in channel.history(limit=100):
+            if message.id != original_queue_message_id and message.author == channel.guild.me:
+                try:
+                    await message.delete()
+                except discord.errors.NotFound:
+                    pass  # Ignore if the message is already deleted
+
+        # Remove the Requeue and Finish buttons by editing the view
+        try:
+            await interaction.message.delete()
+        except discord.errors.NotFound:
+            pass  # Ignore if the message is already deleted
+
+        await interaction.response.send_message("Match process finished.", ephemeral=True)
 
 def create_team_embed(team_a, team_b):
     embed = discord.Embed(title="Team Management", color=discord.Color.blue())

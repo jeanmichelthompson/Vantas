@@ -1,19 +1,23 @@
 import random
 import config
-from supabase_client import check_database, get_match_details, update_rank, get_leaderboard, check_rank, clear_rank, set_rank
+import discord
+from supabase_client import check_database, get_match_details, update_rank, get_leaderboard, check_rank, clear_rank, set_rank, update_replay_code
 from openai_client import gpt_response, store_message
-from datetime import datetime
+from datetime import datetime, timedelta
+
 
 # Main function to handle incoming messages
 async def handle_message(bot, message):
     msg = message.content
-    
+
     # Define a dictionary to map commands to their respective handler functions
     commands = {
         "!win": log_win_command,
         "!loss": log_loss_command,
         "!leaderboard": leaderboard_command,
+        "!match": match_command,
         "!history": history_command,
+        "!replay": replay_command,
         "!checkdb": checkdb_command,
         "!rank": rank_command,
         "!clearrank": clearrank_command,
@@ -204,7 +208,11 @@ async def history_command(bot, message):
         return
 
     match_ids = rank_data["matches"][-20:]  # Get the last 20 matches
-    history_message = f"**{display_name}'s Match History**\n"
+    history_embed = discord.Embed(
+        title=f"{display_name}'s Match History",
+        description=f"Showing the last {len(match_ids)} matches",
+        color=discord.Color.blue()
+    )
 
     for match_id in match_ids:
         match_details = get_match_details(match_id)
@@ -219,16 +227,101 @@ async def history_command(bot, message):
         else:
             status = "Unknown"
 
-        # Format the created_at timestamp
+        # Adjust the created_at timestamp by subtracting 4 hours
         match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
-        formatted_time = match_time.strftime("%B %d, %I:%M%p").replace('AM', 'am').replace('PM', 'pm')
+        match_time_adjusted = match_time - timedelta(hours=4)
+
+        # Format the adjusted time
+        formatted_time = match_time_adjusted.strftime("%B %d, %I:%M%p").replace('AM', 'am').replace('PM', 'pm')
         
+        # Remove leading zero from the day
+        formatted_time = formatted_time.replace(" 0", " ")
+
+        # Add replay code if available
+        replay_code = match_details.get("replay")
+        replay_text = f"**Replay Code:** {replay_code}\n" if replay_code else ""
+
+        # Add a field to the embed for each match
+        history_embed.add_field(
+            name=f"-----------------------------------------------------------\nMatch ID: {match_id}",
+            value=f"**Game:** {match_details['game'].capitalize()}\n**Result:** {status}\n{replay_text}**Time:** {formatted_time}",
+            inline=False
+        )
+
+    await message.channel.send(embed=history_embed)
+
+# Function to fetch and display match details based on match ID
+async def match_command(bot, message):
+    msg = message.content
+    if len(msg.split()) > 1:
+        match_id = msg.split("!match ", 1)[1].strip()
+    else:
+        await message.channel.send("Match ID not provided. Usage: !match <match_id>")
+        return
+
+    try:
+        # Attempt to get match details
+        match_details = get_match_details(match_id)
+        if not match_details:
+            await message.channel.send("No match found with the provided ID.")
+            return
+
+        # Parse the created_at timestamp and adjust by subtracting 4 hours
+        match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
+        match_time_adjusted = match_time - timedelta(hours=4)
+
+        # Format the adjusted time
+        formatted_time = match_time_adjusted.strftime("%B %d, %I:%M%p").replace('AM', 'am').replace('PM', 'pm')
+
         # Remove leading zero from day
         formatted_time = formatted_time.replace(" 0", " ")
 
-        history_message += f"{formatted_time} - {match_details['game'].capitalize()} - {status}\n"
+        # Fetch the global names of the players on both teams
+        team1_mentions = [await bot.fetch_user(int(user_id)) for user_id in match_details["team1"]]
+        team2_mentions = [await bot.fetch_user(int(user_id)) for user_id in match_details["team2"]]
+        team1_mentions = "\n".join([user.mention for user in team1_mentions])
+        team2_mentions = "\n".join([user.mention for user in team2_mentions])
 
-    await message.channel.send(history_message)
+        # Add replay code if available
+        replay_code = match_details.get("replay")
+        replay_text = f"**Replay Code:** {replay_code}\n" if replay_code else ""
+
+        # Prepare and send match details as an embed
+        embed = discord.Embed(title=f"Match: {match_id}", description=f"{formatted_time}", color=discord.Color.blue())
+        embed.add_field(name="**Team A**", value=team1_mentions, inline=True)
+        embed.add_field(name="**Team B**", value=team2_mentions, inline=True)
+        embed.add_field(name="**Winner**", value=match_details['winner'], inline=False)
+        if replay_text:
+            embed.add_field(name="Replay Code", value=replay_code, inline=False)
+
+        await message.channel.send(embed=embed)
+
+    except Exception as e:
+        # Handle any errors (e.g., invalid match ID)
+        await message.channel.send("Invalid match ID or an error occurred while retrieving match details.")
+
+# Function to handle the replay command
+async def replay_command(bot, message):
+    msg = message.content
+    parts = msg.split()
+
+    if len(parts) < 3:
+        await message.channel.send("Invalid usage. Usage: !replay <match_id> <replay_code>")
+        return
+
+    match_id = parts[1]
+    replay_code = parts[2]
+
+    # Verify the match exists
+    match_details = get_match_details(match_id)
+    if not match_details:
+        await message.channel.send(f"No match found with ID {match_id}.")
+        return
+
+    # Update the replay column in the matches table
+    update_replay_code(match_id, replay_code)
+
+    await message.channel.send(f"Replay code '{replay_code}' stored for match ID: {match_id}.")
 
 # Function to handle the gpt command
 async def gpt_command(bot, message):
@@ -241,16 +334,16 @@ async def gpt_command(bot, message):
 async def help_command(bot, message):
     help_message = (
         "**Available Commands:**\n"
-        "!help - Show this help message\n"
         "!vantas <message> - Talk to Vantas directly"
-        "!win <game_name> - Log a win for a game\n"
-        "!loss <game_name> - Log a loss for a game\n"
         "!history <user_id> - Show the match history for a player\n"
+        "!match <match_id> - Show details for a specific match\n"
+        "!replay <match_id> <replay_code> - Store a replay code for a match\n"
         "!leaderboard <game_name> - Show the leaderboard for a game\n"
         "!rank <user_id> - Check individual rank for a player\n"
         "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
         "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
         "!checkdb - Check the current database (Admin)\n"
+        "!help - Show this help message\n"
     )
     await message.channel.send(help_message)
 

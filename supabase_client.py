@@ -149,19 +149,27 @@ def update_user_matches(user_id: str, match_id: str):
         # Update the user's matches array
         supabase.table('users').update({"matches": updated_matches}).eq('user_id', user_id).execute()
 
-#Function to get match details
+# Function to get match details, including the replay code
 def get_match_details(match_id: str):
     response = supabase.table('matches').select('*').eq('id', match_id).execute()
     if response.data:
         match_data = response.data[0]
         return {
-            "team1": match_data["team1"],  # Array of user IDs in team1
-            "team2": match_data["team2"],  # Array of user IDs in team2
-            "winner": match_data["winner"],  # "Team A" or "Team B"
-            "game": match_data["game"],  # The game name
-            "created_at": match_data["created_at"]  # Timestamp of match creation
+            "team1": match_data["team1"],
+            "team2": match_data["team2"],
+            "winner": match_data["winner"],
+            "game": match_data["game"],
+            "created_at": match_data["created_at"],
+            "replay": match_data.get("replay")
         }
     return None
+
+# Function to update the replay code for a specific match
+def update_replay_code(match_id: str, replay_code: str):
+    response = supabase.table('matches').update({
+        "replay": replay_code
+    }).eq('id', match_id).execute()
+    return response
 
 
 
