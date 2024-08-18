@@ -12,7 +12,7 @@ GAMES = ["overwatch", "league"]
 CHANNEL_INFO = [{
     "title": "Overwatch 5v5 Matchmaking Queue",
     "channel_id": 1262418283613917204,
-    "max_players": 2,
+    "max_players": 10,
     "lobby_channel_id": 1262418541378928680,
     "team_a_channel_id": 1262418597171564566,
     "team_b_channel_id": 1262418624694714469
