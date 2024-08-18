@@ -111,7 +111,16 @@ def insert_match(team1: list, team2: list, game: str, status: str = "ongoing"):
         "winner": None  # Winner will be set once the match is complete
     }
     response = supabase.table('matches').insert(new_match).execute()
-    return response.data[0]["id"] if response.data else None
+    
+    if response.data:
+        match_id = response.data[0]["id"]
+
+        # Update the matches column for each user in both teams
+        for user_id in team1 + team2:
+            update_user_matches(user_id, match_id)
+        
+        return match_id
+    return None
 
 # Function to update the match as complete and set the winner
 def update_match(match_id: str, winner: str):
@@ -120,6 +129,41 @@ def update_match(match_id: str, winner: str):
         "winner": winner
     }).eq('id', match_id).execute()
     return response
+
+def update_user_matches(user_id: str, match_id: str):
+    # Fetch the current matches array for the user
+    response = supabase.table('users').select('matches').eq('user_id', user_id).execute()
+    
+    if len(response.data) == 0:  # User does not exist
+        # Insert new user data with the match ID
+        new_data = {"user_id": user_id, "matches": [match_id]}
+        supabase.table('users').insert(new_data).execute()
+    else:
+        current_matches = response.data[0].get('matches', [])
+        if current_matches is None:
+            current_matches = []
+
+        # Append the new match ID
+        updated_matches = current_matches + [match_id]
+
+        # Update the user's matches array
+        supabase.table('users').update({"matches": updated_matches}).eq('user_id', user_id).execute()
+
+#Function to get match details
+def get_match_details(match_id: str):
+    response = supabase.table('matches').select('*').eq('id', match_id).execute()
+    if response.data:
+        match_data = response.data[0]
+        return {
+            "team1": match_data["team1"],  # Array of user IDs in team1
+            "team2": match_data["team2"],  # Array of user IDs in team2
+            "winner": match_data["winner"],  # "Team A" or "Team B"
+            "game": match_data["game"],  # The game name
+            "created_at": match_data["created_at"]  # Timestamp of match creation
+        }
+    return None
+
+
 
 
 

@@ -1,7 +1,8 @@
 import random
 import config
-from supabase_client import check_database, update_rank, get_leaderboard, check_rank, clear_rank, set_rank
+from supabase_client import check_database, get_match_details, update_rank, get_leaderboard, check_rank, clear_rank, set_rank
 from openai_client import gpt_response, store_message
+from datetime import datetime
 
 # Main function to handle incoming messages
 async def handle_message(bot, message):
@@ -12,6 +13,7 @@ async def handle_message(bot, message):
         "!win": log_win_command,
         "!loss": log_loss_command,
         "!leaderboard": leaderboard_command,
+        "!history": history_command,
         "!checkdb": checkdb_command,
         "!rank": rank_command,
         "!clearrank": clearrank_command,
@@ -69,33 +71,35 @@ async def test_command(bot, message):
 
 # Function to log a win
 async def log_win_command(bot, message):
-    msg = message.content
-    user_id = str(message.author.id)
-    if len(msg.split()) > 1:
-        game_name = msg.split("!win ", 1)[1].lower()
-        game_name_display = game_name.capitalize()
-        if game_name in config.GAMES:
-            update_rank(user_id, game_name, "win")
-            await message.channel.send(f"Win logged for {game_name_display}!")
-        else:
-            await message.channel.send(f"Invalid game name. Available games: {', '.join(g.capitalize() for g in config.GAMES)}")
-    else:
-        await message.channel.send("Game name not provided. Usage: !win <game_name>")
+    await message.channel.send("Command has been deprecated. Ranking is now updated automatically based on match results.")
+    # msg = message.content
+    # user_id = str(message.author.id)
+    # if len(msg.split()) > 1:
+    #     game_name = msg.split("!win ", 1)[1].lower()
+    #     game_name_display = game_name.capitalize()
+    #     if game_name in config.GAMES:
+    #         update_rank(user_id, game_name, "win")
+    #         await message.channel.send(f"Win logged for {game_name_display}!")
+    #     else:
+    #         await message.channel.send(f"Invalid game name. Available games: {', '.join(g.capitalize() for g in config.GAMES)}")
+    # else:
+    #     await message.channel.send("Game name not provided. Usage: !win <game_name>")
 
 # Function to log a loss
 async def log_loss_command(bot, message):
-    msg = message.content
-    user_id = str(message.author.id)
-    if len(msg.split()) > 1:
-        game_name = msg.split("!loss ", 1)[1].lower()
-        game_name_display = game_name.capitalize()
-        if game_name in config.GAMES:
-            update_rank(user_id, game_name, "loss")
-            await message.channel.send(f"Loss logged for {game_name_display}!")
-        else:
-            await message.channel.send(f"Invalid game name. Available games: {', '.join(g.capitalize() for g in config.GAMES)}")
-    else:
-        await message.channel.send("Game name not provided. Usage: !loss <game_name>")
+    await message.channel.send("Command has been deprecated. Ranking is now updated automatically based on match results.")
+    # msg = message.content
+    # user_id = str(message.author.id)
+    # if len(msg.split()) > 1:
+    #     game_name = msg.split("!loss ", 1)[1].lower()
+    #     game_name_display = game_name.capitalize()
+    #     if game_name in config.GAMES:
+    #         update_rank(user_id, game_name, "loss")
+    #         await message.channel.send(f"Loss logged for {game_name_display}!")
+    #     else:
+    #         await message.channel.send(f"Invalid game name. Available games: {', '.join(g.capitalize() for g in config.GAMES)}")
+    # else:
+    #     await message.channel.send("Game name not provided. Usage: !loss <game_name>")
 
 # Function to show the leaderboard
 async def leaderboard_command(bot, message):
@@ -184,6 +188,48 @@ async def setrank_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
+# Function to display match history for a user
+async def history_command(bot, message):
+    msg = message.content
+    if len(msg.split()) > 1:
+        target_user_id = msg.split("!history ", 1)[1]
+    else:
+        target_user_id = str(message.author.id)
+
+    # Fetch the user's rank data
+    rank_data = check_rank(target_user_id)
+    display_name = (await bot.fetch_user(int(target_user_id))).global_name
+    if not rank_data or not rank_data.get("matches"):
+        await message.channel.send(f"No match history found for user {display_name}.")
+        return
+
+    match_ids = rank_data["matches"][-20:]  # Get the last 20 matches
+    history_message = f"**{display_name}'s Match History**\n"
+
+    for match_id in match_ids:
+        match_details = get_match_details(match_id)
+        if not match_details:
+            continue
+
+        # Determine if the user won or lost the match
+        if target_user_id in match_details["team1"]:
+            status = "Win" if match_details["winner"] == "Team A" else "Loss"
+        elif target_user_id in match_details["team2"]:
+            status = "Win" if match_details["winner"] == "Team B" else "Loss"
+        else:
+            status = "Unknown"
+
+        # Format the created_at timestamp
+        match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
+        formatted_time = match_time.strftime("%B %d, %I:%M%p").replace('AM', 'am').replace('PM', 'pm')
+        
+        # Remove leading zero from day
+        formatted_time = formatted_time.replace(" 0", " ")
+
+        history_message += f"{formatted_time} - {match_details['game'].capitalize()} - {status}\n"
+
+    await message.channel.send(history_message)
+
 # Function to handle the gpt command
 async def gpt_command(bot, message):
     msg = message.content
@@ -196,14 +242,15 @@ async def help_command(bot, message):
     help_message = (
         "**Available Commands:**\n"
         "!help - Show this help message\n"
+        "!vantas <message> - Talk to Vantas directly"
         "!win <game_name> - Log a win for a game\n"
         "!loss <game_name> - Log a loss for a game\n"
+        "!history <user_id> - Show the match history for a player\n"
         "!leaderboard <game_name> - Show the leaderboard for a game\n"
         "!rank <user_id> - Check individual rank for a player\n"
         "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
         "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
         "!checkdb - Check the current database (Admin)\n"
-        "!vantas <message> - Talk to Vantas directly"
     )
     await message.channel.send(help_message)
 

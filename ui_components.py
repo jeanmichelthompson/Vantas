@@ -191,7 +191,6 @@ class SelectWinnerButton(Button):
             # Attempt to delete the "Select Winning Team" embed
             await interaction.message.delete()
         except discord.errors.NotFound:
-            # The message might have already been deleted; handle this gracefully
             pass
 
         try:
@@ -201,7 +200,6 @@ class SelectWinnerButton(Button):
                 if match_message:
                     await match_message.delete()
         except discord.errors.NotFound:
-            # The message might have already been deleted; handle this gracefully
             pass
         
         # Announce the winner and print out the teams in an embed
@@ -214,21 +212,79 @@ class SelectWinnerButton(Button):
         )
         embed.add_field(name="**Team A**", value=team_a_names, inline=True)
         embed.add_field(name="**Team B**", value=team_b_names, inline=True)
-        await interaction.channel.send(embed=embed)
+        
+        # Send the winner announcement embed with a "Requeue" button
+        await interaction.channel.send(embed=embed, view=RequeueView(self.team_a, self.team_b, self.game_name))
 
         # Update the match in the database as complete
         from supabase_client import update_match, update_rank
 
-        # Set the winner in the match record
         update_match(self.match_id, self.team_name)
 
-        # Adjust ranks in the users table based on the winning and losing teams
         for player, _ in self.team:
             update_rank(player.id, self.game_name, "win")
 
         losing_team = self.team_b if self.team_name == "Team A" else self.team_a
         for player, _ in losing_team:
             update_rank(player.id, self.game_name, "lose")
+
+class RequeueView(View):
+    def __init__(self, team_a, team_b, game_name):
+        super().__init__(timeout=None)
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.add_item(RequeueButton(self.team_a, self.team_b, self.game_name))
+        self.add_item(FinishButton())  # Add the Finish button
+
+class RequeueButton(Button):
+    def __init__(self, team_a, team_b, game_name):
+        super().__init__(label="Requeue", style=discord.ButtonStyle.primary)
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+
+    async def callback(self, interaction: discord.Interaction):
+        # Combine players from both teams
+        players = self.team_a + self.team_b
+
+        # Fetch the updated ranks from the database
+        from supabase_client import check_rank
+
+        updated_players = []
+        for player, _ in players:
+            rank_data = check_rank(str(player.id))
+            if rank_data and self.game_name in rank_data:
+                updated_players.append((player, rank_data[self.game_name]))
+            else:
+                updated_players.append((player, 0))
+
+        # Sort players by rank (optional, depending on your matchmaking logic)
+        updated_players.sort(key=lambda x: x[1], reverse=True)
+
+        # Distribute players back into two balanced teams
+        new_team_a = []
+        new_team_b = []
+        for i, (player, rank) in enumerate(updated_players):
+            if i % 2 == 0:
+                new_team_a.append((player, rank))
+            else:
+                new_team_b.append((player, rank))
+
+        # Send a message with the new teams
+        embed = create_team_embed(new_team_a, new_team_b)
+        await interaction.response.send_message("Requeued! Please confirm the teams.", embed=embed, view=TeamManagementView(new_team_a, new_team_b, self.game_name))
+        await interaction.message.delete()
+
+class FinishButton(Button):
+    def __init__(self):
+        super().__init__(label="Finish", style=discord.ButtonStyle.danger)
+
+    async def callback(self, interaction: discord.Interaction):
+        # Remove the Requeue and Finish buttons by editing the view
+        await interaction.message.edit(view=None)
+        await interaction.response.send_message("Match process finished.", ephemeral=True)
+
 
 def create_team_embed(team_a, team_b):
     embed = discord.Embed(title="Team Management", color=discord.Color.blue())
