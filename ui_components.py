@@ -121,7 +121,7 @@ class ConfirmTeamsButton(Button):
             value="\n".join([f"{player.mention} (Rank: {rank})" for player, rank in self.team_view.team_b]),
             inline=True
         )
-        embed.set_footer(text="Good luck to both teams!")
+        embed.set_footer(text="Select a map to proceed.")
 
         # Insert match details into Supabase and store the match ID
         from supabase_client import insert_match
@@ -133,11 +133,111 @@ class ConfirmTeamsButton(Button):
         match_message = await interaction.followup.send(embed=embed, ephemeral=False)
         match_message_id = match_message.id
 
-        # Now pass the match_message_id when creating MatchCompleteView
-        await match_message.edit(view=MatchCompleteView(match_id, self.team_view.team_a, self.team_view.team_b, self.game_name, match_message_id, self.organizer_id))
+        # Fetch the map pool from Supabase
+        from supabase_client import get_map_pool
+        map_pool = get_map_pool(self.game_name)
+
+        # Ensure the correct arguments are passed
+        select_map_view = SelectMapView(
+            maps=map_pool,
+            match_id=match_id,
+            match_message_id=match_message_id,
+            team_a=self.team_view.team_a,
+            team_b=self.team_view.team_b,
+            game_name=self.game_name,
+            organizer_id=self.organizer_id
+        )
+        
+        await match_message.edit(view=select_map_view)
 
         # Delete the original team management message
         await interaction.message.delete()
+
+class SelectMapView(View):
+    def __init__(self, maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page=1, total_pages=None):
+        super().__init__(timeout=None)
+        self.maps = maps
+        self.match_id = match_id
+        self.match_message_id = match_message_id
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.organizer_id = organizer_id
+        self.current_page = current_page
+        self.total_pages = total_pages or (len(maps) + 24) // 25
+
+        # Add the map selection dropdown
+        self.add_item(SelectMapDropdown(maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+
+        # Add pagination buttons if there are multiple pages
+        if self.total_pages > 1:
+            self.add_item(PaginationButton("previous", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+            self.add_item(PaginationButton("next", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+
+class SelectMapDropdown(discord.ui.Select):
+    def __init__(self, maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, total_pages):
+        super().__init__(
+            placeholder=f"Select a map... (Page {current_page}/{total_pages})",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label=map_name) for map_name in maps[(current_page-1)*25 : current_page*25]
+            ]
+        )
+        self.match_id = match_id
+        self.match_message_id = match_message_id
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.organizer_id = organizer_id
+        self.current_page = current_page
+        self.total_pages = total_pages
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.organizer_id:
+            return await interaction.response.send_message("You are not the organizer for this game.", ephemeral=True)
+
+        selected_map = self.values[0]
+
+        # Update the selected map in the Supabase
+        from supabase_client import update_match_map
+        update_match_map(self.match_id, selected_map)
+
+        # Fetch the existing embed to update it
+        embed = interaction.message.embeds[0]
+        embed.description += f"\n**Map:** {selected_map}"
+        
+        # Acknowledge the interaction and update the message
+        await interaction.response.edit_message(embed=embed, view=MatchCompleteView(self.match_id, self.team_a, self.team_b, self.game_name, self.match_message_id, self.organizer_id))
+
+class PaginationButton(discord.ui.Button):
+    def __init__(self, direction, maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, total_pages):
+        super().__init__(label="Previous" if direction == "previous" else "Next", style=discord.ButtonStyle.secondary)
+        self.direction = direction
+        self.maps = maps
+        self.match_id = match_id
+        self.match_message_id = match_message_id
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.organizer_id = organizer_id
+        self.current_page = current_page
+        self.total_pages = total_pages
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.organizer_id:
+            return await interaction.response.send_message("You are not the organizer for this game.", ephemeral=True)
+
+        if self.direction == "previous":
+            new_page = self.current_page - 1 if self.current_page > 1 else self.total_pages
+        else:
+            new_page = self.current_page + 1 if self.current_page < self.total_pages else 1
+
+        # Create a new SelectMapView with the updated page
+        new_view = SelectMapView(self.maps, self.match_id, self.match_message_id, self.team_a, self.team_b, self.game_name, self.organizer_id, new_page, self.total_pages)
+        
+        # Acknowledge the interaction and update the message
+        await interaction.response.edit_message(view=new_view)
 
 class MatchCompleteView(View):
     def __init__(self, match_id, team_a, team_b, game_name, match_message_id, organizer_id=None):
@@ -148,6 +248,8 @@ class MatchCompleteView(View):
         self.game_name = game_name
         self.match_message_id = match_message_id
         self.organizer_id = organizer_id
+
+        # Add the Match Complete button to this view
         self.add_item(MatchCompleteButton(match_id, team_a, team_b, game_name, match_message_id, organizer_id))
 
 class MatchCompleteButton(Button):

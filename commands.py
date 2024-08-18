@@ -192,13 +192,29 @@ async def setrank_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
-# Function to display match history for a user
+# Function to display match history for a user with pagination
 async def history_command(bot, message):
     msg = message.content
-    if len(msg.split()) > 1:
-        target_user_id = msg.split("!history ", 1)[1]
-    else:
-        target_user_id = str(message.author.id)
+    parts = msg.split()
+
+    # Determine the target_user_id and page number
+    target_user_id = str(message.author.id)
+    page = 1
+
+    if len(parts) == 2:
+        if parts[1].isdigit() and len(parts[1]) <= 3:  # Check if it's a page number (up to 999 pages)
+            page = int(parts[1])
+        else:
+            target_user_id = parts[1]
+    elif len(parts) > 2:
+        target_user_id = parts[1]
+        if parts[2].isdigit():
+            page = int(parts[2])
+
+    # Validate the page number
+    if page < 1:
+        await message.channel.send("Page number must be 1 or greater.")
+        return
 
     # Fetch the user's rank data
     rank_data = check_rank(target_user_id)
@@ -207,10 +223,21 @@ async def history_command(bot, message):
         await message.channel.send(f"No match history found for user {display_name}.")
         return
 
-    match_ids = rank_data["matches"][-20:]  # Get the last 20 matches
+    matches_per_page = 10
+    total_matches = len(rank_data["matches"])
+    total_pages = (total_matches + matches_per_page - 1) // matches_per_page
+
+    # Check if the page is within the valid range
+    if page > total_pages:
+        await message.channel.send(f"Page {page} is out of range. There are only {total_pages} pages available.")
+        return
+
+    match_ids = rank_data["matches"][(page-1)*matches_per_page:page*matches_per_page]  # Get matches for the requested page
+
+    # Create the embed for the match history
     history_embed = discord.Embed(
         title=f"{display_name}'s Match History",
-        description=f"Showing the last {len(match_ids)} matches",
+        description=f"Showing matches {((page-1)*matches_per_page)+1}-{page*matches_per_page} out of {total_matches} matches",
         color=discord.Color.blue()
     )
 
@@ -243,10 +270,17 @@ async def history_command(bot, message):
 
         # Add a field to the embed for each match
         history_embed.add_field(
-            name=f"-----------------------------------------------------------\nMatch ID: {match_id}",
-            value=f"**Game:** {match_details['game'].capitalize()}\n**Result:** {status}\n{replay_text}**Time:** {formatted_time}",
+            name=f"-----------------------------------------------------------\n{match_details['game'].capitalize()}: {match_id}",
+            value=(
+                f"**Map:** {match_details['map']}\n"
+                f"**Result:** {status}\n"
+                f"{replay_text}**Time:** {formatted_time}"
+            ),
             inline=False
         )
+
+    # Include pagination info in the footer
+    history_embed.set_footer(text=f"Page {page} of {total_pages}")
 
     await message.channel.send(embed=history_embed)
 
@@ -287,7 +321,12 @@ async def match_command(bot, message):
         replay_text = f"**Replay Code:** {replay_code}\n" if replay_code else ""
 
         # Prepare and send match details as an embed
-        embed = discord.Embed(title=f"Match: {match_id}", description=f"{formatted_time}", color=discord.Color.blue())
+        embed = discord.Embed(
+            title=f"{match_details['game'].capitalize()}: {match_id}",
+            description=f"{formatted_time}",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="**Map**", value=match_details['map'], inline=False)
         embed.add_field(name="**Team A**", value=team1_mentions, inline=True)
         embed.add_field(name="**Team B**", value=team2_mentions, inline=True)
         embed.add_field(name="**Winner**", value=match_details['winner'], inline=False)
@@ -335,7 +374,7 @@ async def help_command(bot, message):
     help_message = (
         "**Available Commands:**\n"
         "!vantas <message> - Talk to Vantas directly"
-        "!history <user_id> - Show the match history for a player\n"
+        "!history <user_id> <page> - Show the match history for a player. Page is optional and if user_id is absent, it will default to you\n"
         "!match <match_id> - Show details for a specific match\n"
         "!replay <match_id> <replay_code> - Store a replay code for a match\n"
         "!leaderboard <game_name> - Show the leaderboard for a game\n"

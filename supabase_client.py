@@ -160,6 +160,7 @@ def get_match_details(match_id: str):
             "winner": match_data["winner"],
             "game": match_data["game"],
             "created_at": match_data["created_at"],
+            "map": match_data.get("map"),
             "replay": match_data.get("replay")
         }
     return None
@@ -180,7 +181,16 @@ def is_organizer(user_id: str):
                 return True
     return False
 
+# Function to get the map pool for a specific game
+def get_map_pool(game_name: str):
+    response = supabase.table('maps').select('map_pool').eq('id', game_name).execute()
+    if response.data:
+        return response.data[0]['map_pool']
+    return []
 
-
-
-
+# Function to update the map for a specific match
+def update_match_map(match_id: str, map_name: str):
+    response = supabase.table('matches').update({
+        "map": map_name
+    }).eq('id', match_id).execute()
+    return response
