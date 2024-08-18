@@ -154,10 +154,18 @@ async def rank_command(bot, message):
     rank_data = check_rank(target_user_id)
     display_name = (await bot.fetch_user(target_user_id)).global_name
     if rank_data:
-        rank_message = f"**{display_name}**\n"
+        rank_embed = discord.Embed(
+            title=f"{display_name}'s Profile",
+            description=f"User ID: {target_user_id}",
+            color=discord.Color.blue()
+        )
+
+        # Loop through the rank data, excluding the 'matches' and 'user_id' fields
         for game, rank in rank_data.items():
-            rank_message += f"{game.capitalize()}: {rank}\n"
-        await message.channel.send(rank_message)
+            if game != "matches" and game != "user_id":
+                rank_embed.add_field(name=game.capitalize(), value=str(rank), inline=True)
+
+        await message.channel.send(embed=rank_embed)
     else:
         await message.channel.send(f"No data available for user {display_name}.")
 

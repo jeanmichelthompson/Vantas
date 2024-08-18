@@ -1,6 +1,8 @@
 import discord
 from discord.ui import Button, View
 
+from config import CHANNEL_INFO
+
 # Define a custom view for the queue buttons
 class QueueView(View):
     def __init__(self, channel_id):
@@ -17,7 +19,7 @@ class QueueView(View):
         from matchmaking import handle_leave_queue
         await handle_leave_queue(interaction, self.channel_id)
 
-    @discord.ui.button(label="Leaderboard", style=discord.ButtonStyle.secondary, custom_id="leaderboard")
+    @discord.ui.button(label="Leaderboard", style=discord.ButtonStyle.green, custom_id="leaderboard")
     async def leaderboard_button(self, interaction: discord.Interaction, button: Button):
         from matchmaking import handle_leaderboard
         await handle_leaderboard(interaction, self.channel_id)
@@ -166,13 +168,17 @@ class SelectMapView(View):
         self.current_page = current_page
         self.total_pages = total_pages or (len(maps) + 24) // 25
 
-        # Add the map selection dropdown
-        self.add_item(SelectMapDropdown(maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+        # If maps are available, add the map selection dropdown and pagination buttons
+        if maps:
+            self.add_item(SelectMapDropdown(maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
 
-        # Add pagination buttons if there are multiple pages
-        if self.total_pages > 1:
-            self.add_item(PaginationButton("previous", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
-            self.add_item(PaginationButton("next", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+            # Add pagination buttons if there are multiple pages
+            if self.total_pages > 1:
+                self.add_item(PaginationButton("previous", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+                self.add_item(PaginationButton("next", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
+        else:
+            # If no maps are available, show the "Match Complete" button directly
+            self.add_item(MatchCompleteButton(match_id, team_a, team_b, game_name, match_message_id, organizer_id))
 
 class SelectMapDropdown(discord.ui.Select):
     def __init__(self, maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, total_pages):
@@ -249,12 +255,63 @@ class MatchCompleteView(View):
         self.match_message_id = match_message_id
         self.organizer_id = organizer_id
 
+        # Add the Team Voice button to this view
+        self.add_item(TeamVoiceButton(team_a, team_b, game_name, organizer_id))
+
         # Add the Match Complete button to this view
         self.add_item(MatchCompleteButton(match_id, team_a, team_b, game_name, match_message_id, organizer_id))
 
+class TeamVoiceButton(Button):
+    def __init__(self, team_a, team_b, game_name, organizer_id=None):
+        super().__init__(label="Team Voice", style=discord.ButtonStyle.primary)
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.organizer_id = organizer_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.organizer_id:
+            return await interaction.response.send_message("You are not the organizer for this game.", ephemeral=True)
+
+        # Find the channel info for the game
+        channel_info = next((info for info in CHANNEL_INFO if info["title"].lower().startswith(self.game_name.lower())), None)
+
+        if not channel_info:
+            return await interaction.response.send_message("Channel information not found for this game.", ephemeral=True)
+
+        # Fetch the voice channel IDs for Team A and Team B
+        team_a_channel_id = channel_info["team_a_channel_id"]
+        team_b_channel_id = channel_info["team_b_channel_id"]
+
+        # Move Team A members to their voice channel
+        team_a_channel = interaction.guild.get_channel(team_a_channel_id)
+        if team_a_channel is not None:
+            for member, _ in self.team_a:
+                if member.voice:  # Check if the member is in a voice channel
+                    try:
+                        await member.move_to(team_a_channel)
+                    except discord.errors.Forbidden:
+                        await interaction.response.send_message(f"Could not move {member.mention} to the voice channel. Insufficient permissions.", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"{member.mention} is not in a voice channel.", ephemeral=True)
+
+        # Move Team B members to their voice channel
+        team_b_channel = interaction.guild.get_channel(team_b_channel_id)
+        if team_b_channel is not None:
+            for member, _ in self.team_b:
+                if member.voice:  # Check if the member is in a voice channel
+                    try:
+                        await member.move_to(team_b_channel)
+                    except discord.errors.Forbidden:
+                        await interaction.response.send_message(f"Could not move {member.mention} to the voice channel. Insufficient permissions.", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"{member.mention} is not in a voice channel.", ephemeral=True)
+
+        await interaction.response.send_message("Teams have been moved to their respective voice channels.", ephemeral=True)
+
 class MatchCompleteButton(Button):
     def __init__(self, match_id, team_a, team_b, game_name, match_message_id, organizer_id=None):
-        super().__init__(label="Match Complete", style=discord.ButtonStyle.primary)
+        super().__init__(label="Match Complete", style=discord.ButtonStyle.green)
         self.match_id = match_id
         self.team_a = team_a
         self.team_b = team_b
@@ -354,12 +411,14 @@ class RequeueView(View):
         self.team_b = team_b
         self.game_name = game_name
         self.organizer_id = organizer_id
+
         self.add_item(RequeueButton(self.team_a, self.team_b, self.game_name, self.organizer_id))
+        self.add_item(LobbyVoiceButton(self.team_a, self.team_b, self.game_name, self.organizer_id))
         self.add_item(FinishButton(self.organizer_id))
 
 class RequeueButton(Button):
     def __init__(self, team_a, team_b, game_name, organizer_id=None):
-        super().__init__(label="Requeue", style=discord.ButtonStyle.primary)
+        super().__init__(label="Requeue", style=discord.ButtonStyle.green)
         self.team_a = team_a
         self.team_b = team_b
         self.game_name = game_name
@@ -399,6 +458,41 @@ class RequeueButton(Button):
         embed = create_team_embed(new_team_a, new_team_b)
         await interaction.response.send_message("Requeued! Please confirm the teams.", embed=embed, view=TeamManagementView(new_team_a, new_team_b, self.game_name, self.organizer_id))
         await interaction.message.delete()
+
+class LobbyVoiceButton(Button):
+    def __init__(self, team_a, team_b, game_name, organizer_id=None):
+        super().__init__(label="Move to Lobby", style=discord.ButtonStyle.primary)
+        self.team_a = team_a
+        self.team_b = team_b
+        self.game_name = game_name
+        self.organizer_id = organizer_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.organizer_id:
+            return await interaction.response.send_message("You are not the organizer for this game.", ephemeral=True)
+
+        # Find the channel info for the game
+        channel_info = next((info for info in CHANNEL_INFO if info["title"].lower().startswith(self.game_name.lower())), None)
+
+        if not channel_info:
+            return await interaction.response.send_message("Channel information not found for this game.", ephemeral=True)
+
+        # Fetch the lobby voice channel ID
+        lobby_channel_id = channel_info["lobby_channel_id"]
+
+        # Move all members to the lobby voice channel
+        lobby_channel = interaction.guild.get_channel(lobby_channel_id)
+        if lobby_channel is not None:
+            for member, _ in self.team_a + self.team_b:
+                if member.voice:  # Check if the member is in a voice channel
+                    try:
+                        await member.move_to(lobby_channel)
+                    except discord.errors.Forbidden:
+                        await interaction.response.send_message(f"Could not move {member.mention} to the lobby voice channel. Insufficient permissions.", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"{member.mention} is not in a voice channel.", ephemeral=True)
+
+        await interaction.response.send_message("Teams have been moved back to the lobby voice channel.", ephemeral=True)
 
 class FinishButton(Button):
     def __init__(self, organizer_id=None):
