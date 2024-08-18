@@ -1,44 +1,10 @@
 import discord
-from discord.ui import Button, View
-from supabase_client import get_queue_data, update_queue_data, get_leaderboard
+from supabase_client import get_queue_data, update_queue_data, get_leaderboard, check_rank
+from ui_components import QueueView, TeamManagementView, create_team_embed
 
 # Dictionary to hold queue information for each channel
 queues = {}
 
-
-# Define a custom view for the queue buttons
-class QueueView(View):
-
-    def __init__(self, channel_id):
-        super().__init__(timeout=None)
-        self.channel_id = channel_id  # Store the channel ID for context
-
-    # Button for joining the queue
-    @discord.ui.button(label="Join Queue",
-                       style=discord.ButtonStyle.primary,
-                       custom_id="join_queue")
-    async def join_queue_button(self, interaction: discord.Interaction,
-                                button: Button):
-        await handle_join_queue(interaction, self.channel_id)
-
-    # Button for leaving the queue
-    @discord.ui.button(label="Leave Queue",
-                       style=discord.ButtonStyle.danger,
-                       custom_id="leave_queue")
-    async def leave_queue_button(self, interaction: discord.Interaction,
-                                 button: Button):
-        await handle_leave_queue(interaction, self.channel_id)
-
-    # Button for viewing the leaderboard
-    @discord.ui.button(label="Leaderboard",
-                       style=discord.ButtonStyle.secondary,
-                       custom_id="leaderboard")
-    async def leaderboard_button(self, interaction: discord.Interaction,
-                                 button: Button):
-        await handle_leaderboard(interaction, self.channel_id)
-
-
-# Function to initialize queues for each channel
 # Function to initialize queues for each channel
 async def initialize_queues(bot, channel_info):
     for info in channel_info:
@@ -74,8 +40,9 @@ async def delete_bot_messages(channel):
 # Function to create an embed for the queue status
 def create_queue_embed(channel_id):
     queue_info = queues[channel_id]
+    num_players = len(queue_info["queue"])
     embed = discord.Embed(title=queue_info["title"], color=discord.Color.red())
-    embed.add_field(name="Players In Queue:", value=format_queue(channel_id), inline=False)
+    embed.add_field(name=f"{num_players} Players In Queue:", value=format_queue(channel_id), inline=False)
     return embed
 
 # Function to format the queue into a readable string
@@ -97,18 +64,57 @@ async def handle_join_queue(interaction: discord.Interaction, channel_id):
         # Save the updated queue state to Supabase
         update_queue_data(channel_id, {"channel_id": channel_id, "title": queue_info["title"], "queue": [member.id for member in queue], "max_players": max_players, "message_id": queue_info["message_id"]})
         await update_queue_message(interaction.channel, channel_id)
+        
         if len(queue) == max_players:
-            await interaction.channel.send("Match is ready! " + ", ".join(member.mention for member in queue))
+            await process_full_queue(interaction, channel_id, queue_info)
             queue.clear()
             # Clear the queue state in Supabase
             update_queue_data(channel_id, {"channel_id": channel_id, "title": queue_info["title"], "queue": [], "max_players": max_players, "message_id": queue_info["message_id"]})
             await update_queue_message(interaction.channel, channel_id)
+
     await interaction.response.send_message("You have joined the queue.", ephemeral=True)
+
+# Function to process the queue when it is full
+async def process_full_queue(interaction: discord.Interaction, channel_id, queue_info):
+    queue = queue_info["queue"]
+    game_name = queue_info["title"].split()[0].lower()  
+    
+    # Fetch player ranks from the database
+    player_ranks = []
+    for member in queue:
+        rank_data = check_rank(str(member.id))
+        if rank_data:
+            player_ranks.append((member, rank_data[game_name]))
+        else:
+            player_ranks.append((member, 0))
+
+    # Sort by rank in descending order
+    player_ranks.sort(key=lambda x: x[1], reverse=True)
+
+    # Distribute players into two balanced teams
+    team_a = []
+    team_b = []
+    for i, (player, rank) in enumerate(player_ranks):
+        if i % 2 == 0:
+            team_a.append((player, rank))
+        else:
+            team_b.append((player, rank))
+
+    # Send a message with the teams
+    team_a_mentions = ", ".join([member.mention for member, _ in team_a])
+    team_b_mentions = ", ".join([member.mention for member, _ in team_b])
+    await interaction.channel.send(f"Match is ready!\n\n*Suggested Teams*\n**Team A:** {team_a_mentions}\n**Team B:** {team_b_mentions}")
+
+    # Create an embed with the teams
+    embed = create_team_embed(team_a, team_b)
+    
+    # Send the embed with buttons to edit and confirm the teams
+    await interaction.channel.send(embed=embed, view=TeamManagementView(team_a, team_b))
 
 # Function to handle a user leaving the queue
 async def handle_leave_queue(interaction: discord.Interaction, channel_id):
     user = interaction.user
-    queue_info = queues[channel_id]  # Add this line to get the correct queue_info
+    queue_info = queues[channel_id]
     queue = queue_info["queue"]
     if user in queue:
         queue.remove(user)
