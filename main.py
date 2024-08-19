@@ -9,6 +9,7 @@ import config
 # Initialize the bot with necessary intents
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=intents)
 
 # Event handler for when the bot is ready

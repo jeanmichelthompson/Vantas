@@ -134,6 +134,7 @@ async def leaderboard_command(bot, message):
     else:
         await message.channel.send("Game name not provided. Usage: !leaderboard <game_name> <page_number>*")
 
+# Function to display player profile with ranks for each game
 async def rank_command(bot, message):
     msg = message.content
     parts = msg.split()
@@ -152,20 +153,22 @@ async def rank_command(bot, message):
 
     rank_data = get_user(target_user_id)
     wins_losses_data = get_wins_and_losses(target_user_id)
-    display_name = (await bot.fetch_user(target_user_id)).global_name
+    user = await bot.fetch_user(target_user_id)
+    display_name = user.global_name
+    avatar_url = user.avatar.url
     
     if rank_data:
         rank_embed = discord.Embed(
-            title=f"{display_name}'s Profile",
             description=f"User ID: {target_user_id}",
             color=discord.Color.blue()
         )
 
+        # Add the avatar
+        rank_embed.set_author(name=display_name + "'s Profile", icon_url=avatar_url)
+
         for game, rank in rank_data.items():
             if game != "matches" and game != "user_id":
                 position, mmr = get_user_leaderboard_position(game.lower(), target_user_id)
-                print("Position and MMR:")
-                print(position, mmr)
                 if position is not None and mmr is not None:
                     wins_losses = wins_losses_data.get(game.lower(), {'wins': 0, 'losses': 0})
                     rank_embed.add_field(
@@ -432,13 +435,13 @@ async def help_command(bot, message):
     help_message = (
         "**Available Commands:**\n"
         "!vantas <message> - Talk to Vantas directly"
-        "!history <user_id>* <page>* - Show the match history for a player. Default is you\n"
+        "!history <user>* <page>* - Show the match history for a player. Default is you\n"
         "!match <match_id> - Show details for a specific match\n"
         "!replay <match_id> <replay_code> - Store a replay code for a match\n"
         "!leaderboard <game_name> <page>* - Show the leaderboard for a game\n"
-        "!rank <user_id>* - Check individual rank for a player. Default is you\n"
-        "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
-        "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
+        "!rank <user>* - Check individual rank for a player. Default is you\n"
+        "!setrank <user> <game_name> <rank> - Set rank for a player (Admin)\n"
+        "!clearrank <user> - Clear individual rank for a player (Admin)\n"
         "!clearqueue - Clear all active queues (Admin)\n"
         "!clearreplay - Clear all replay codes (Admin)\n"
         "!help - Show this help message\n"
@@ -452,20 +455,18 @@ def has_og_role(member):
     return "OG" in role_names
 
 # Function to resolve a user identifier to a user ID
-async def resolve_user(bot, user_identifier: str):
-    # Check if the input is a valid user ID (Discord snowflake)
-    if user_identifier.isdigit() and (17 <= len(user_identifier) <= 19):
-        try:
-            # Try to fetch the user by ID
-            user = await bot.fetch_user(int(user_identifier))
-            return str(user.id)
-        except discord.NotFound:
-            return None
+async def resolve_user(bot, user_identifier):
+    guild = bot.get_guild(config.GUILD_ID)
+    
+    # Fetch all members manually using an async generator
+    members = [member async for member in guild.fetch_members(limit=None)]
 
-    # If not a user ID, try to fetch the user by username
-    for guild in bot.guilds:
-        member = discord.utils.get(guild.members, name=user_identifier)
-        if member:
-            return str(member.id)
+    if user_identifier.isdigit():
+        # Check if it's a user ID
+        user = discord.utils.get(members, id=int(user_identifier))
+    else:
+        # Otherwise, try to find by name
+        user = discord.utils.find(lambda m: m.name == user_identifier or m.global_name == user_identifier, members)
+    
+    return str(user.id) if user else None
 
-    return None

@@ -9,6 +9,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 OPENAI_KEY = os.getenv("OPENAI_KEY")
 GAMES = ["overwatch", "league"]
+GUILD_ID = 1262417429305360395
 CHANNEL_INFO = [{
     "title": "Overwatch 5v5 Matchmaking Queue",
     "channel_id": 1262418283613917204,
