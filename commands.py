@@ -233,8 +233,20 @@ async def history_command(bot, message):
         await message.channel.send(f"No match history found for user {display_name}.")
         return
 
+    # Fetch and sort match IDs by their corresponding match creation time
+    matches_with_time = []
+    for match_id in rank_data["matches"]:
+        match_details = get_match_details(match_id)
+        if match_details:
+            match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
+            matches_with_time.append((match_id, match_time))
+
+    # Sort matches by time (most recent first)
+    matches_with_time.sort(key=lambda x: x[1], reverse=True)
+    sorted_match_ids = [match_id for match_id, _ in matches_with_time]
+
     matches_per_page = 10
-    total_matches = len(rank_data["matches"])
+    total_matches = len(sorted_match_ids)
     total_pages = (total_matches + matches_per_page - 1) // matches_per_page
 
     # Check if the page is within the valid range
@@ -242,7 +254,7 @@ async def history_command(bot, message):
         await message.channel.send(f"Page {page} is out of range. There are only {total_pages} pages available.")
         return
 
-    match_ids = rank_data["matches"][(page-1)*matches_per_page:page*matches_per_page]  # Get matches for the requested page
+    match_ids = sorted_match_ids[(page-1)*matches_per_page:page*matches_per_page]  # Get matches for the requested page
 
     # Create the embed for the match history
     history_embed = discord.Embed(
@@ -399,7 +411,7 @@ async def help_command(bot, message):
         "!rank <user_id> - Check individual rank for a player\n"
         "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
         "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
-        "!checkdb - Check the current database (Admin)\n"
+        "!clearqueue - Clear all active queues (Admin)\n"
         "!help - Show this help message\n"
     )
     await message.channel.send(help_message)
