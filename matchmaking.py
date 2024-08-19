@@ -1,5 +1,5 @@
 import discord
-from supabase_client import get_queue_data, update_queue_data, get_leaderboard, check_rank, is_organizer
+from supabase_client import get_queue_data, update_queue_data, get_leaderboard, get_user, is_organizer
 from ui_components import QueueView, TeamManagementView, create_team_embed
 import random
 
@@ -76,7 +76,7 @@ async def handle_join_queue(interaction: discord.Interaction, channel_id):
         await interaction.response.send_message("You have joined the queue.", ephemeral=True)
     else:
         await interaction.response.send_message("You are already in the queue.", ephemeral=True)
-        
+
 # Function to process the queue when it is full
 async def process_full_queue(interaction: discord.Interaction, channel_id, queue_info):
     queue = queue_info["queue"]
@@ -87,7 +87,7 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
     organizer_id = None
 
     for member in queue:
-        rank_data = check_rank(str(member.id))
+        rank_data = get_user(str(member.id))
         if rank_data:
             player_ranks.append((member, rank_data[game_name]))
         else:

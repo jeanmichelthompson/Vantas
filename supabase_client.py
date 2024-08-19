@@ -46,8 +46,18 @@ def get_leaderboard(game_name: str):
         else:
             # Re-raise the exception if it's something unexpected
             raise e
+        
+def get_user_leaderboard_position(game_name: str, user_id: str):
+    leaderboard_data = get_leaderboard(game_name)
+    if not leaderboard_data:
+        return None
 
-def check_rank(user_id: str):
+    for position, (uid, mmr) in enumerate(leaderboard_data, start=1):
+        if uid == user_id:
+            return position, mmr
+    return None, None
+
+def get_user(user_id: str):
     response = supabase.table('users').select('*').eq('user_id', user_id).execute()
     return response.data[0] if response.data else None
 
@@ -64,15 +74,6 @@ def set_rank(user_id: str, game_name: str, rank: int):
         'user_id': user_id,
         game_name: rank
     }).execute()
-
-# Function to fetch all user data from the users table
-def check_database():
-    try:
-        response = supabase.table("users").select("*").execute()
-        return response.data
-    except Exception as e:
-        print(f"Error fetching user data: {e}")
-        return []
     
 # Function to get queue data
 def get_queue_data(channel_id):
@@ -247,3 +248,45 @@ def clear_all_replays():
         print("All replay codes have been cleared.")
     except Exception as e:
         print(f"Error clearing replay codes: {e}")
+
+def get_wins_and_losses(user_id: str):
+    # Fetch all match IDs associated with the user
+    user_data = supabase.table('users').select('matches').eq('user_id', user_id).execute()
+
+    if not user_data.data:
+        return None
+
+    matches = user_data.data[0].get('matches', [])
+    if not matches:
+        return None
+
+    wins_losses = {}
+
+    # Iterate through each match to determine win/loss
+    for match_id in matches:
+        match_data = supabase.table('matches').select('*').eq('id', match_id).execute()
+
+        if not match_data.data:
+            continue
+
+        match = match_data.data[0]
+
+        # Determine if the user was on Team A or Team B
+        if user_id in match['team1']:
+            user_team = 'Team A'
+        elif user_id in match['team2']:
+            user_team = 'Team B'
+        else:
+            continue  # User was not part of this match
+
+        # Check which team won and update the wins/losses count
+        game_name = match['game'].lower()
+        if game_name not in wins_losses:
+            wins_losses[game_name] = {'wins': 0, 'losses': 0}
+
+        if match['winner'] == user_team:
+            wins_losses[game_name]['wins'] += 1
+        else:
+            wins_losses[game_name]['losses'] += 1
+
+    return wins_losses

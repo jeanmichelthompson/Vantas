@@ -1,8 +1,7 @@
 import random
 import config
 import discord
-from matchmaking import queues, update_queue_message
-from supabase_client import check_database, clear_all_queues, clear_all_replays, get_match_details, update_queue_data, update_rank, get_leaderboard, check_rank, clear_rank, set_rank, update_replay_code
+from supabase_client import clear_all_queues, clear_all_replays, get_match_details, get_leaderboard, get_user, clear_rank, get_user_leaderboard_position, get_wins_and_losses, set_rank, update_replay_code
 from openai_client import gpt_response, store_message
 from datetime import datetime, timedelta
 
@@ -135,7 +134,7 @@ async def leaderboard_command(bot, message):
     else:
         await message.channel.send("Game name not provided. Usage: !leaderboard <game_name> <page_number>*")
 
-# Function to check individual rank for a player by user ID
+# Function to check individual MMR for a player by user ID
 async def rank_command(bot, message):
     msg = message.content
     if len(msg.split()) > 1:
@@ -148,8 +147,10 @@ async def rank_command(bot, message):
         await message.channel.send("Invalid user ID.")
         return
 
-    rank_data = check_rank(target_user_id)
+    rank_data = get_user(target_user_id)
+    wins_losses_data = get_wins_and_losses(target_user_id)
     display_name = (await bot.fetch_user(target_user_id)).global_name
+    
     if rank_data:
         rank_embed = discord.Embed(
             title=f"{display_name}'s Profile",
@@ -160,7 +161,20 @@ async def rank_command(bot, message):
         # Loop through the rank data, excluding the 'matches' and 'user_id' fields
         for game, rank in rank_data.items():
             if game != "matches" and game != "user_id":
-                rank_embed.add_field(name=game.capitalize(), value=str(rank), inline=True)
+                position, mmr = get_user_leaderboard_position(game.lower(), target_user_id)
+                if position is not None and mmr is not None:
+                    wins_losses = wins_losses_data.get(game.lower(), {'wins': 0, 'losses': 0})
+                    rank_embed.add_field(
+                        name=f"{game.capitalize()}",
+                        value=f"Rank: {position}\nMMR: {mmr}\nWL: {wins_losses['wins']}-{wins_losses['losses']}",
+                        inline=True
+                    )
+                else:
+                    rank_embed.add_field(
+                        name=f"{game.capitalize()}",
+                        value="No leaderboard data available.",
+                        inline=True
+                    )
 
         await message.channel.send(embed=rank_embed)
     else:
@@ -221,8 +235,8 @@ async def history_command(bot, message):
         await message.channel.send("Page number must be 1 or greater.")
         return
 
-    # Fetch the user's rank data
-    rank_data = check_rank(target_user_id)
+    # Fetch the user's data
+    rank_data = get_user(target_user_id)
     display_name = (await bot.fetch_user(int(target_user_id))).global_name
     if not rank_data or not rank_data.get("matches"):
         await message.channel.send(f"No match history found for user {display_name}.")
