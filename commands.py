@@ -2,7 +2,7 @@ import random
 import config
 import discord
 from matchmaking import queues, update_queue_message
-from supabase_client import check_database, clear_all_queues, get_match_details, update_queue_data, update_rank, get_leaderboard, check_rank, clear_rank, set_rank, update_replay_code
+from supabase_client import check_database, clear_all_queues, clear_all_replays, get_match_details, update_queue_data, update_rank, get_leaderboard, check_rank, clear_rank, set_rank, update_replay_code
 from openai_client import gpt_response, store_message
 from datetime import datetime, timedelta
 
@@ -19,11 +19,11 @@ async def handle_message(bot, message):
         "!match": match_command,
         "!history": history_command,
         "!replay": replay_command,
-        "!checkdb": checkdb_command,
         "!rank": rank_command,
         "!clearrank": clearrank_command,
         "!setrank": setrank_command,
         "!clearqueue": clearqueue_command,
+        "!clearreplay": clear_replay_command,
         "!vantas": gpt_command,
         "!help": help_command,
         "!test": test_command,
@@ -78,67 +78,62 @@ async def test_command(bot, message):
 # Function to log a win
 async def log_win_command(bot, message):
     await message.channel.send("Command has been deprecated. Ranking is now updated automatically based on match results.")
-    # msg = message.content
-    # user_id = str(message.author.id)
-    # if len(msg.split()) > 1:
-    #     game_name = msg.split("!win ", 1)[1].lower()
-    #     game_name_display = game_name.capitalize()
-    #     if game_name in config.GAMES:
-    #         update_rank(user_id, game_name, "win")
-    #         await message.channel.send(f"Win logged for {game_name_display}!")
-    #     else:
-    #         await message.channel.send(f"Invalid game name. Available games: {', '.join(g.capitalize() for g in config.GAMES)}")
-    # else:
-    #     await message.channel.send("Game name not provided. Usage: !win <game_name>")
 
 # Function to log a loss
 async def log_loss_command(bot, message):
     await message.channel.send("Command has been deprecated. Ranking is now updated automatically based on match results.")
-    # msg = message.content
-    # user_id = str(message.author.id)
-    # if len(msg.split()) > 1:
-    #     game_name = msg.split("!loss ", 1)[1].lower()
-    #     game_name_display = game_name.capitalize()
-    #     if game_name in config.GAMES:
-    #         update_rank(user_id, game_name, "loss")
-    #         await message.channel.send(f"Loss logged for {game_name_display}!")
-    #     else:
-    #         await message.channel.send(f"Invalid game name. Available games: {', '.join(g.capitalize() for g in config.GAMES)}")
-    # else:
-    #     await message.channel.send("Game name not provided. Usage: !loss <game_name>")
 
-# Function to show the leaderboard
+# Function to show the leaderboard with pagination
 async def leaderboard_command(bot, message):
     msg = message.content
-    if len(msg.split()) > 1:
-        game_name = msg.split("!leaderboard ", 1)[1].lower()
+    parts = msg.split()
+
+    # Determine the game name and page number
+    if len(parts) > 1:
+        game_name = parts[1].lower()
         game_name_display = game_name.capitalize()
+        page = 1
+        
+        if len(parts) > 2 and parts[2].isdigit():  # Check if a page number is provided
+            page = int(parts[2])
+
         leaderboard_data = get_leaderboard(game_name)
         if not leaderboard_data:
             await message.channel.send(f"{game_name_display} is not a supported game. Supported games: Overwatch, League")
-        else:
-            leaderboard_message = f"**{game_name_display} Leaderboard**\n"
-            for user_id, rank in leaderboard_data:
-                display_name = (await bot.fetch_user(int(user_id))).global_name
-                leaderboard_message += f"{display_name}: {rank}\n"
-            await message.channel.send(leaderboard_message)
-    else:
-        await message.channel.send("Game name not provided. Usage: !leaderboard <game_name>")
+            return
 
-# Function to check the current database
-async def checkdb_command(bot, message):
-    if has_og_role(message.author):
-        try:
-            users = check_database()
-            if users:
-                for user in users:
-                    await message.channel.send(f"{user}")
-            else:
-                await message.channel.send("No data found in the database.")
-        except Exception as e:
-            await message.channel.send(f"An error occurred: {str(e)}")
+        players_per_page = 10
+        total_players = len(leaderboard_data)
+        total_pages = (total_players + players_per_page - 1) // players_per_page
+
+        # Validate the page number
+        if page < 1 or page > total_pages:
+            await message.channel.send(f"Page {page} is out of range. There are only {total_pages} pages available.")
+            return
+
+        start_index = (page - 1) * players_per_page
+        end_index = start_index + players_per_page
+        leaderboard_page = leaderboard_data[start_index:end_index]
+
+        # Create an embed for the leaderboard
+        embed = discord.Embed(
+            title=f"{game_name_display} Leaderboard",
+            color=discord.Color.green()
+        )
+
+        # Add each user and their rank to the embed, mentioning the user
+        for index, (user_id, rank) in enumerate(leaderboard_page, start=start_index + 1):
+            user_mention = (await bot.fetch_user(int(user_id))).mention
+            embed.add_field(
+                name="",
+                value=f"{index}. {user_mention}: {rank}",
+                inline=False
+            )
+        embed.set_footer(text=f"Page {page} of {total_pages}")
+        # Send the embed
+        await message.channel.send(embed=embed)
     else:
-        await message.channel.send("You do not have permission to use this command.")
+        await message.channel.send("Game name not provided. Usage: !leaderboard <game_name> <page_number>*")
 
 # Function to check individual rank for a player by user ID
 async def rank_command(bot, message):
@@ -392,6 +387,14 @@ async def clearqueue_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
+# Function to clear the replay code for all matches
+async def clear_replay_command(bot, message):
+    if has_og_role(message.author):
+        clear_all_replays()
+        await message.channel.send("Replay codes have been cleared for all matches.")
+    else:
+        await message.channel.send("You do not have permission to use this command.")
+
 # Function to handle the gpt command
 async def gpt_command(bot, message):
     msg = message.content
@@ -404,15 +407,17 @@ async def help_command(bot, message):
     help_message = (
         "**Available Commands:**\n"
         "!vantas <message> - Talk to Vantas directly"
-        "!history <user_id> <page> - Show the match history for a player. Page is optional and if user_id is absent, it will default to you\n"
+        "!history <user_id>* <page>* - Show the match history for a player. Default is you\n"
         "!match <match_id> - Show details for a specific match\n"
         "!replay <match_id> <replay_code> - Store a replay code for a match\n"
-        "!leaderboard <game_name> - Show the leaderboard for a game\n"
-        "!rank <user_id> - Check individual rank for a player\n"
+        "!leaderboard <game_name> <page>* - Show the leaderboard for a game\n"
+        "!rank <user_id>* - Check individual rank for a player. Default is you\n"
         "!setrank <user_id> <game_name> <rank> - Set rank for a player (Admin)\n"
         "!clearrank <user_id> - Clear individual rank for a player (Admin)\n"
         "!clearqueue - Clear all active queues (Admin)\n"
+        "!clearreplay - Clear all replay codes (Admin)\n"
         "!help - Show this help message\n"
+        "*Commands marked with * are optional*"
     )
     await message.channel.send(help_message)
 

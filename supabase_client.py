@@ -87,7 +87,6 @@ def update_queue_data(channel_id, data):
 def increment_ping_if_due(bot):
     try:
         # Fetch the latest ping record
-        clear_all_queues(bot)
         response = supabase.table('ping').select('*').order('updated_at', desc=True).limit(1).execute()
 
         if response.data:
@@ -104,6 +103,7 @@ def increment_ping_if_due(bot):
                     'updated_at': 'now()',
                 }).eq('id', ping_record['id']).execute()
                 print(f"Ping incremented to {new_ping_value} and updated_at set to current time.")
+                clear_all_queues(bot)
             else:
                 print("Less than a day has passed since the last update. No update necessary.")
         else:
@@ -236,3 +236,14 @@ async def clear_all_queues(bot):
             await update_queue_message(channel, channel_id)
 
     print("All active queues have been cleared.")
+
+# Function to clear the replay codes for all matches
+def clear_all_replays():
+    try:
+        # Set the replay column to NULL (or None in Python) for all matches
+        supabase.table('matches').update({
+            "replay": None
+        }).execute()
+        print("All replay codes have been cleared.")
+    except Exception as e:
+        print(f"Error clearing replay codes: {e}")
