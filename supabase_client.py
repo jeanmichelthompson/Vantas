@@ -290,3 +290,24 @@ def get_wins_and_losses(user_id: str):
             wins_losses[game_name]['losses'] += 1
 
     return wins_losses
+
+def delete_match(match_id: str):
+    try:
+        # Delete the match from the matches table
+        supabase.table('matches').delete().eq('id', match_id).execute()
+
+        # Fetch all users that have the match_id in their matches array
+        users_with_match = supabase.table('users').select('user_id', 'matches').execute()
+
+        # Iterate through users and update their matches array
+        for user in users_with_match.data:
+            if match_id in user['matches']:
+                updated_matches = [mid for mid in user['matches'] if mid != match_id]
+
+                # Update the user's matches array
+                supabase.table('users').update({'matches': updated_matches}).eq('user_id', user['user_id']).execute()
+
+        print(f"Match {match_id} and associated references in user matches have been deleted.")
+    
+    except Exception as e:
+        print(f"Error deleting match {match_id}: {e}")
