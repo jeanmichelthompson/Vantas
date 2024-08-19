@@ -20,7 +20,7 @@ async def on_ready():
 
 async def schedule_ping_update():
     while True:
-        increment_ping_if_due()
+        increment_ping_if_due(bot)
         await asyncio.sleep(86400) 
 
 # Event handler for when a message is received

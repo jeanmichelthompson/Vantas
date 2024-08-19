@@ -73,9 +73,10 @@ async def handle_join_queue(interaction: discord.Interaction, channel_id):
             # Clear the queue state in Supabase
             update_queue_data(channel_id, {"channel_id": channel_id, "title": queue_info["title"], "queue": [], "max_players": max_players, "message_id": queue_info["message_id"]})
             await update_queue_message(interaction.channel, channel_id)
-
-    await interaction.response.send_message("You have joined the queue.", ephemeral=True)
-
+        await interaction.response.send_message("You have joined the queue.", ephemeral=True)
+    else:
+        await interaction.response.send_message("You are already in the queue.", ephemeral=True)
+        
 # Function to process the queue when it is full
 async def process_full_queue(interaction: discord.Interaction, channel_id, queue_info):
     queue = queue_info["queue"]
@@ -146,7 +147,9 @@ async def handle_leave_queue(interaction: discord.Interaction, channel_id):
             "message_id": queue_info["message_id"]
         })
         await update_queue_message(interaction.channel, channel_id)
-    await interaction.response.send_message("You have left the queue.", ephemeral=True)
+        await interaction.response.send_message("You have left the queue.", ephemeral=True)
+    else:
+        await interaction.response.send_message("You are not in the queue.", ephemeral=True)
 
 # Function to update the queue message with the current queue status
 async def update_queue_message(channel, channel_id):

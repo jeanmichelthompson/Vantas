@@ -1,7 +1,8 @@
 import random
 import config
 import discord
-from supabase_client import check_database, get_match_details, update_rank, get_leaderboard, check_rank, clear_rank, set_rank, update_replay_code
+from matchmaking import queues, update_queue_message
+from supabase_client import check_database, clear_all_queues, get_match_details, update_queue_data, update_rank, get_leaderboard, check_rank, clear_rank, set_rank, update_replay_code
 from openai_client import gpt_response, store_message
 from datetime import datetime, timedelta
 
@@ -22,6 +23,7 @@ async def handle_message(bot, message):
         "!rank": rank_command,
         "!clearrank": clearrank_command,
         "!setrank": setrank_command,
+        "!clearqueue": clearqueue_command,
         "!vantas": gpt_command,
         "!help": help_command,
         "!test": test_command,
@@ -113,7 +115,7 @@ async def leaderboard_command(bot, message):
         game_name_display = game_name.capitalize()
         leaderboard_data = get_leaderboard(game_name)
         if not leaderboard_data:
-            await message.channel.send(f"No data available for the {game_name_display} leaderboard.")
+            await message.channel.send(f"{game_name_display} is not a supported game. Supported games: Overwatch, League")
         else:
             leaderboard_message = f"**{game_name_display} Leaderboard**\n"
             for user_id, rank in leaderboard_data:
@@ -370,6 +372,14 @@ async def replay_command(bot, message):
 
     await message.channel.send(f"Replay code '{replay_code}' stored for match ID: {match_id}.")
 
+# Function to clear all active queues for each game
+async def clearqueue_command(bot, message):
+    if has_og_role(message.author):
+        await clear_all_queues(bot)
+        await message.channel.send("All active queues have been cleared.")
+    else:
+        await message.channel.send("You do not have permission to use this command.")
+
 # Function to handle the gpt command
 async def gpt_command(bot, message):
     msg = message.content
@@ -398,4 +408,3 @@ async def help_command(bot, message):
 def has_og_role(member):
     role_names = [role.name for role in member.roles]
     return "OG" in role_names
-    

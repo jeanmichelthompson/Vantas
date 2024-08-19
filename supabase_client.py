@@ -26,10 +26,26 @@ def update_rank(user_id: str, game_name: str, action: str):
         new_rank = current_rank + score_change
         supabase.table('users').update({ game_name: new_rank }).eq('user_id', user_id).execute()
 
+# Function to get the leaderboard for a specific game
 def get_leaderboard(game_name: str):
-    response = supabase.table('users').select('user_id', game_name).order(game_name, desc=True).execute()
-    leaderboard_data = [(record['user_id'], record[game_name]) for record in response.data]
-    return leaderboard_data
+    try:
+        # Attempt to select the column associated with the game_name
+        response = supabase.table('users').select('user_id', game_name).order(game_name, desc=True).execute()
+        
+        # Check if there is any data returned
+        if not response.data:
+            return None
+        
+        # Process the data if available
+        leaderboard_data = [(record['user_id'], record[game_name]) for record in response.data]
+        return leaderboard_data
+    except Exception as e:
+        # Handle the case where the column does not exist
+        if 'column' in str(e) and 'does not exist' in str(e):
+            return None
+        else:
+            # Re-raise the exception if it's something unexpected
+            raise e
 
 def check_rank(user_id: str):
     response = supabase.table('users').select('*').eq('user_id', user_id).execute()
@@ -68,9 +84,10 @@ def update_queue_data(channel_id, data):
     response = supabase.table('queues').upsert(data).execute()
     return response
 
-def increment_ping_if_due():
+def increment_ping_if_due(bot):
     try:
         # Fetch the latest ping record
+        clear_all_queues(bot)
         response = supabase.table('ping').select('*').order('updated_at', desc=True).limit(1).execute()
 
         if response.data:
@@ -194,3 +211,28 @@ def update_match_map(match_id: str, map_name: str):
         "map": map_name
     }).eq('id', match_id).execute()
     return response
+
+# Function to clear all active queues
+async def clear_all_queues(bot):
+    from matchmaking import queues, update_queue_message
+    for channel_info in config.CHANNEL_INFO:
+        channel_id = channel_info['channel_id']
+        queue_info = queues.get(channel_id)
+        
+        if queue_info:
+            # Clear the in-memory queue
+            queue_info["queue"].clear()
+
+            # Update the queue state in Supabase
+            update_queue_data(channel_id, {
+                "channel_id": channel_id,
+                "title": queue_info["title"],
+                "queue": [],
+                "max_players": queue_info["max_players"],
+                "message_id": queue_info["message_id"]
+            })
+
+            channel = bot.get_channel(channel_id)
+            await update_queue_message(channel, channel_id)
+
+    print("All active queues have been cleared.")
