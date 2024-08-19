@@ -23,6 +23,7 @@ async def handle_message(bot, message):
         "!replay": replay_command,
         "!rank": rank_command,
         "!h2h": h2h_command,
+        "!clearchat": clearchat_command,
         "!clearrank": clearrank_command,
         "!setrank": setrank_command,
         "!clearqueue": clearqueue_command,
@@ -587,6 +588,40 @@ async def update_h2h_embed(embed, records, bot):
             value=f"{opponent_name}: {record['wins']}-{record['losses']}",
             inline=False
         )
+
+# Function to clear the chat in the channel
+async def clearchat_command(bot, message):
+    msg = message.content
+    parts = msg.split()
+
+    # Ensure the user has the OG role
+    if not has_og_role(message.author):
+        await message.channel.send("You do not have permission to use this command.")
+        return
+
+    # Ensure the command is being used correctly
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.channel.send("Usage: !clearchat <number>")
+        return
+
+    # Get the number of messages to delete
+    num_messages = int(parts[1])
+
+    # Limit the number of messages to delete to avoid accidental large deletions
+    if num_messages > 100:
+        await message.channel.send("You can only delete up to 100 messages at a time.")
+        return
+
+    # Delete the messages
+    try:
+        # Bulk delete messages, including the command message itself
+        deleted = await message.channel.purge(limit=num_messages + 1)
+        confirmation_msg = await message.channel.send(f"Deleted {len(deleted) - 1} messages.")
+        await confirmation_msg.delete(delay=5)  # Delete the confirmation message after 5 seconds
+    except discord.Forbidden:
+        await message.channel.send("I do not have permission to delete messages in this channel.")
+    except discord.HTTPException as e:
+        await message.channel.send(f"An error occurred: {str(e)}")
 
 # Function to handle the gpt command
 async def gpt_command(bot, message):
