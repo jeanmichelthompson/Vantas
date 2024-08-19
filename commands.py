@@ -134,17 +134,20 @@ async def leaderboard_command(bot, message):
     else:
         await message.channel.send("Game name not provided. Usage: !leaderboard <game_name> <page_number>*")
 
-# Function to check individual MMR for a player by user ID
 async def rank_command(bot, message):
     msg = message.content
-    if len(msg.split()) > 1:
-        target_user_id = msg.split("!rank ", 1)[1]
+    parts = msg.split()
+    
+    if len(parts) > 1:
+        user_identifier = parts[1]
     else:
-        target_user_id = str(message.author.id)
+        user_identifier = str(message.author.id)
 
-    # Validate that target_user_id is a valid snowflake
-    if not target_user_id.isdigit() or not (17 <= len(target_user_id) <= 19):
-        await message.channel.send("Invalid user ID.")
+    # Resolve user ID from the identifier
+    target_user_id = await resolve_user(bot, user_identifier)
+    
+    if not target_user_id:
+        await message.channel.send("User not found or invalid identifier.")
         return
 
     rank_data = get_user(target_user_id)
@@ -158,10 +161,11 @@ async def rank_command(bot, message):
             color=discord.Color.blue()
         )
 
-        # Loop through the rank data, excluding the 'matches' and 'user_id' fields
         for game, rank in rank_data.items():
             if game != "matches" and game != "user_id":
                 position, mmr = get_user_leaderboard_position(game.lower(), target_user_id)
+                print("Position and MMR:")
+                print(position, mmr)
                 if position is not None and mmr is not None:
                     wins_losses = wins_losses_data.get(game.lower(), {'wins': 0, 'losses': 0})
                     rank_embed.add_field(
@@ -217,18 +221,25 @@ async def history_command(bot, message):
     parts = msg.split()
 
     # Determine the target_user_id and page number
-    target_user_id = str(message.author.id)
+    user_identifier = str(message.author.id)
     page = 1
 
     if len(parts) == 2:
         if parts[1].isdigit() and len(parts[1]) <= 3:  # Check if it's a page number (up to 999 pages)
             page = int(parts[1])
         else:
-            target_user_id = parts[1]
+            user_identifier = parts[1]
     elif len(parts) > 2:
-        target_user_id = parts[1]
+        user_identifier = parts[1]
         if parts[2].isdigit():
             page = int(parts[2])
+
+    # Resolve the user ID from the identifier
+    target_user_id = await resolve_user(bot, user_identifier)
+    
+    if not target_user_id:
+        await message.channel.send("User not found or invalid identifier.")
+        return
 
     # Validate the page number
     if page < 1:
@@ -439,3 +450,22 @@ async def help_command(bot, message):
 def has_og_role(member):
     role_names = [role.name for role in member.roles]
     return "OG" in role_names
+
+# Function to resolve a user identifier to a user ID
+async def resolve_user(bot, user_identifier: str):
+    # Check if the input is a valid user ID (Discord snowflake)
+    if user_identifier.isdigit() and (17 <= len(user_identifier) <= 19):
+        try:
+            # Try to fetch the user by ID
+            user = await bot.fetch_user(int(user_identifier))
+            return str(user.id)
+        except discord.NotFound:
+            return None
+
+    # If not a user ID, try to fetch the user by username
+    for guild in bot.guilds:
+        member = discord.utils.get(guild.members, name=user_identifier)
+        if member:
+            return str(member.id)
+
+    return None
