@@ -2,9 +2,11 @@ import random
 import config
 import discord
 from discord.ui import Button, View
-from supabase_client import clear_all_queues, clear_all_replays, delete_match, get_match_details, get_leaderboard, get_user, clear_rank, get_user_leaderboard_position, get_wins_and_losses, set_rank, update_replay_code
+from supabase_client import clear_all_queues, clear_all_replays, delete_match, get_head_to_head_record, get_head_to_head_record_against_all, get_match_details, get_leaderboard, get_user, clear_rank, get_user_leaderboard_position, get_wins_and_losses, set_rank, update_replay_code
 from openai_client import gpt_response, store_message
 from datetime import datetime, timedelta
+
+from ui_components import Paginator
 
 
 # Main function to handle incoming messages
@@ -20,6 +22,7 @@ async def handle_message(bot, message):
         "!history": history_command,
         "!replay": replay_command,
         "!rank": rank_command,
+        "!h2h": h2h_command,
         "!clearrank": clearrank_command,
         "!setrank": setrank_command,
         "!clearqueue": clearqueue_command,
@@ -84,21 +87,17 @@ async def log_win_command(bot, message):
 async def log_loss_command(bot, message):
     await message.channel.send("Command has been deprecated. Ranking is now updated automatically based on match results.")
 
-import discord
-from discord.ui import Button, View
-
-# Function to show the leaderboard with pagination and close button
+# Function to display the leaderboard for a specific game
 async def leaderboard_command(bot, message):
     msg = message.content
     parts = msg.split()
 
-    # Determine the game name and page number
     if len(parts) > 1:
         game_name = parts[1].lower()
         game_name_display = game_name.capitalize()
         page = 1
         
-        if len(parts) > 2 and parts[2].isdigit():  # Check if a page number is provided
+        if len(parts) > 2 and parts[2].isdigit():
             page = int(parts[2])
 
         leaderboard_data = get_leaderboard(game_name)
@@ -110,117 +109,46 @@ async def leaderboard_command(bot, message):
         total_players = len(leaderboard_data)
         total_pages = (total_players + players_per_page - 1) // players_per_page
 
-        # Validate the page number
-        if page < 1 or page > total_pages:
-            await message.channel.send(f"Page {page} is out of range. There are only {total_pages} pages available.")
-            return
-
-        start_index = (page - 1) * players_per_page
-        end_index = start_index + players_per_page
-        leaderboard_page = leaderboard_data[start_index:end_index]
-
-        # Create an embed for the leaderboard
+        # Create an embed directly
         embed = discord.Embed(
             title=f"{game_name_display} Leaderboard",
             color=discord.Color.green()
         )
+        start_index = (page - 1) * players_per_page
+        end_index = start_index + players_per_page
+        leaderboard_page = leaderboard_data[start_index:end_index]
 
-        # Add each user and their rank to the embed, mentioning the user
-        for index, (user_id, rank) in enumerate(leaderboard_page, start=start_index + 1):
-            user_mention = (await bot.fetch_user(int(user_id))).mention
-            embed.add_field(
-                name="",
-                value=f"{index}. {user_mention}: {rank}",
-                inline=False
-            )
+        await update_leaderboard_embed(embed, leaderboard_page, bot, game_name, page, players_per_page)
+
         embed.set_footer(text=f"Page {page} of {total_pages}")
 
-        # Create buttons for pagination and closing
-        previous_button = Button(label="Previous", style=discord.ButtonStyle.primary, disabled=page == 1)
-        next_button = Button(label="Next", style=discord.ButtonStyle.primary, disabled=page == total_pages)
-        close_button = Button(label="Close", style=discord.ButtonStyle.danger)
+        paginator = Paginator(
+            bot=bot,
+            title=f"{game_name_display} Leaderboard",
+            data=leaderboard_data,
+            page=page,
+            total_pages=total_pages,
+            page_size=players_per_page,
+            update_func=update_leaderboard_embed,
+            game_name=game_name
+        )
 
-        # Callback for the previous button
-        async def previous_callback(interaction):
-            await interaction.response.defer()
-            await update_leaderboard_message(interaction.message, game_name, page - 1)
-
-        # Callback for the next button
-        async def next_callback(interaction):
-            await interaction.response.defer()
-            await update_leaderboard_message(interaction.message, game_name, page + 1)
-
-        # Callback for the close button
-        async def close_callback(interaction):
-            await interaction.message.delete()
-
-        previous_button.callback = previous_callback
-        next_button.callback = next_callback
-        close_button.callback = close_callback
-
-        # Create a view and add buttons
-        view = View()
-        view.add_item(previous_button)
-        view.add_item(next_button)
-        view.add_item(close_button)
-
-        # Send the embed with buttons
-        await message.channel.send(embed=embed, view=view)
+        # Send the message with the initial embed and the paginator buttons
+        await message.channel.send(embed=embed, view=paginator)
     else:
         await message.channel.send("Game name not provided. Usage: !leaderboard <game_name> <page_number>*")
 
-# Function to update the leaderboard message
-async def update_leaderboard_message(message, game_name, page):
-    leaderboard_data = get_leaderboard(game_name)
-    game_name_display = game_name.capitalize()
+async def update_leaderboard_embed(embed, leaderboard_data, bot, game_name, page, page_size):
+    # Calculate the correct starting index for the current page
+    start_index = (page - 1) * page_size
     
-    players_per_page = 10
-    total_players = len(leaderboard_data)
-    total_pages = (total_players + players_per_page - 1) // players_per_page
-
-    start_index = (page - 1) * players_per_page
-    end_index = start_index + players_per_page
-    leaderboard_page = leaderboard_data[start_index:end_index]
-
-    embed = discord.Embed(
-        title=f"{game_name_display} Leaderboard",
-        color=discord.Color.green()
-    )
-
-    for index, (user_id, rank) in enumerate(leaderboard_page, start=start_index + 1):
-        user_mention = (await message.guild.fetch_member(int(user_id))).mention
+    for index, (user_id, rank) in enumerate(leaderboard_data, start=start_index + 1):
+        user_mention = (await bot.fetch_user(int(user_id))).mention
         embed.add_field(
             name="",
             value=f"{index}. {user_mention}: {rank}",
             inline=False
         )
-    embed.set_footer(text=f"Page {page} of {total_pages}")
-
-    previous_button = Button(label="Previous", style=discord.ButtonStyle.primary, disabled=page == 1)
-    next_button = Button(label="Next", style=discord.ButtonStyle.primary, disabled=page == total_pages)
-    close_button = Button(label="Close", style=discord.ButtonStyle.danger)
-
-    async def previous_callback(interaction):
-        await interaction.response.defer()
-        await update_leaderboard_message(interaction.message, game_name, page - 1)
-
-    async def next_callback(interaction):
-        await interaction.response.defer()
-        await update_leaderboard_message(interaction.message, game_name, page + 1)
-
-    async def close_callback(interaction):
-        await interaction.message.delete()
-
-    previous_button.callback = previous_callback
-    next_button.callback = next_callback
-    close_button.callback = close_callback
-
-    view = View()
-    view.add_item(previous_button)
-    view.add_item(next_button)
-    view.add_item(close_button)
-
-    await message.edit(embed=embed, view=view)
 
 # Function to display player profile with ranks for each game
 async def rank_command(bot, message):
@@ -322,17 +250,16 @@ async def setrank_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
-# Function to display match history for a user with pagination and close button
+# Function to display the match history for a player
 async def history_command(bot, message):
     msg = message.content
     parts = msg.split()
 
-    # Determine the target_user_id and page number
     user_identifier = str(message.author.id)
     page = 1
 
     if len(parts) == 2:
-        if parts[1].isdigit() and len(parts[1]) <= 3:  # Check if it's a page number (up to 999 pages)
+        if parts[1].isdigit():
             page = int(parts[1])
         else:
             user_identifier = parts[1]
@@ -341,133 +268,17 @@ async def history_command(bot, message):
         if parts[2].isdigit():
             page = int(parts[2])
 
-    # Resolve the user ID from the identifier
     target_user_id = await resolve_user(bot, user_identifier)
-    
     if not target_user_id:
         await message.channel.send("User not found or invalid identifier.")
         return
 
-    # Validate the page number
-    if page < 1:
-        await message.channel.send("Page number must be 1 or greater.")
-        return
-
-    # Fetch the user's data
     rank_data = get_user(target_user_id)
     display_name = (await bot.fetch_user(int(target_user_id))).global_name
     if not rank_data or not rank_data.get("matches"):
         await message.channel.send(f"No match history found for user {display_name}.")
         return
 
-    # Fetch and sort match IDs by their corresponding match creation time
-    matches_with_time = []
-    for match_id in rank_data["matches"]:
-        match_details = get_match_details(match_id)
-        if match_details:
-            match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
-            matches_with_time.append((match_id, match_time))
-
-    # Sort matches by time (most recent first)
-    matches_with_time.sort(key=lambda x: x[1], reverse=True)
-    sorted_match_ids = [match_id for match_id, _ in matches_with_time]
-
-    matches_per_page = 10
-    total_matches = len(sorted_match_ids)
-    total_pages = (total_matches + matches_per_page - 1) // matches_per_page
-
-    # Check if the page is within the valid range
-    if page > total_pages:
-        await message.channel.send(f"Page {page} is out of range. There are only {total_pages} pages available.")
-        return
-
-    match_ids = sorted_match_ids[(page-1)*matches_per_page:page*matches_per_page]  # Get matches for the requested page
-
-    # Create the embed for the match history
-    history_embed = discord.Embed(
-        title=f"{display_name}'s Match History",
-        description=f"Showing matches {((page-1)*matches_per_page)+1}-{page*matches_per_page} out of {total_matches} matches",
-        color=discord.Color.blue()
-    )
-
-    for match_id in match_ids:
-        match_details = get_match_details(match_id)
-        if not match_details:
-            continue
-
-        # Determine if the user won or lost the match
-        if target_user_id in match_details["team1"]:
-            status = "Win" if match_details["winner"] == "Team A" else "Loss"
-        elif target_user_id in match_details["team2"]:
-            status = "Win" if match_details["winner"] == "Team B" else "Loss"
-        else:
-            status = "Unknown"
-
-        # Adjust the created_at timestamp by subtracting 4 hours
-        match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
-        match_time_adjusted = match_time - timedelta(hours=4)
-
-        # Format the adjusted time
-        formatted_time = match_time_adjusted.strftime("%B %d, %I:%M%p").replace('AM', 'am').replace('PM', 'pm')
-        
-        # Remove leading zero from the day
-        formatted_time = formatted_time.replace(" 0", " ")
-
-        # Add replay code if available
-        replay_code = match_details.get("replay")
-        replay_text = f"**Replay Code:** {replay_code}\n" if replay_code else ""
-
-        # Add a field to the embed for each match
-        history_embed.add_field(
-            name=f"-----------------------------------------------------------\n{match_details['game'].capitalize()}: {match_id}",
-            value=(
-                f"**Map:** {match_details['map']}\n"
-                f"**Result:** {status}\n"
-                f"{replay_text}**Time:** {formatted_time}"
-            ),
-            inline=False
-        )
-
-    # Create buttons for pagination and closing
-    previous_button = Button(label="Previous", style=discord.ButtonStyle.primary, disabled=page == 1)
-    next_button = Button(label="Next", style=discord.ButtonStyle.primary, disabled=page == total_pages)
-    close_button = Button(label="Close", style=discord.ButtonStyle.danger)
-
-    # Callback for the previous button
-    async def previous_callback(interaction):
-        await interaction.response.defer()
-        await update_history_message(interaction.message, target_user_id, page - 1)
-
-    # Callback for the next button
-    async def next_callback(interaction):
-        await interaction.response.defer()
-        await update_history_message(interaction.message, target_user_id, page + 1)
-
-    # Callback for the close button
-    async def close_callback(interaction):
-        await interaction.message.delete()
-
-    previous_button.callback = previous_callback
-    next_button.callback = next_callback
-    close_button.callback = close_callback
-
-    # Create a view and add buttons
-    view = View()
-    view.add_item(previous_button)
-    view.add_item(next_button)
-    view.add_item(close_button)
-
-    # Include pagination info in the footer
-    history_embed.set_footer(text=f"Page {page} of {total_pages}")
-
-    # Send the embed with buttons
-    await message.channel.send(embed=history_embed, view=view)
-
-# Function to update the history message
-async def update_history_message(message, target_user_id, page):
-    rank_data = get_user(target_user_id)
-    display_name = (await message.guild.fetch_member(int(target_user_id))).global_name
-
     matches_with_time = []
     for match_id in rank_data["matches"]:
         match_details = get_match_details(match_id)
@@ -482,14 +293,35 @@ async def update_history_message(message, target_user_id, page):
     total_matches = len(sorted_match_ids)
     total_pages = (total_matches + matches_per_page - 1) // matches_per_page
 
-    match_ids = sorted_match_ids[(page-1)*matches_per_page:page*matches_per_page]
-
-    history_embed = discord.Embed(
+    # Create an embed directly
+    embed = discord.Embed(
         title=f"{display_name}'s Match History",
-        description=f"Showing matches {((page-1)*matches_per_page)+1}-{page*matches_per_page} out of {total_matches} matches",
         color=discord.Color.blue()
     )
 
+    start_index = (page - 1) * matches_per_page
+    end_index = start_index + matches_per_page
+    match_ids_page = sorted_match_ids[start_index:end_index]
+
+    await update_history_embed(embed, match_ids_page, target_user_id)
+
+    embed.set_footer(text=f"Page {page} of {total_pages}")
+
+    paginator = Paginator(
+        bot=bot,
+        title=f"{display_name}'s Match History",
+        data=sorted_match_ids,
+        page_size=matches_per_page,
+        page=page,
+        total_pages=total_pages,
+        update_func=update_history_embed,
+        target_user_id=target_user_id
+    )
+    
+    # Send the message with the initial embed and the paginator buttons
+    await message.channel.send(embed=embed, view=paginator)
+
+async def update_history_embed(embed, match_ids, target_user_id):
     for match_id in match_ids:
         match_details = get_match_details(match_id)
         if not match_details:
@@ -510,7 +342,7 @@ async def update_history_message(message, target_user_id, page):
         replay_code = match_details.get("replay")
         replay_text = f"**Replay Code:** {replay_code}\n" if replay_code else ""
 
-        history_embed.add_field(
+        embed.add_field(
             name=f"-----------------------------------------------------------\n{match_details['game'].capitalize()}: {match_id}",
             value=(
                 f"**Map:** {match_details['map']}\n"
@@ -519,114 +351,6 @@ async def update_history_message(message, target_user_id, page):
             ),
             inline=False
         )
-
-    previous_button = Button(label="Previous", style=discord.ButtonStyle.primary, disabled=page == 1)
-    next_button = Button(label="Next", style=discord.ButtonStyle.primary, disabled=page == total_pages)
-    close_button = Button(label="Close", style=discord.ButtonStyle.danger)
-
-    async def previous_callback(interaction):
-        await interaction.response.defer()
-        await update_history_message(interaction.message, target_user_id, page - 1)
-
-    async def next_callback(interaction):
-        await interaction.response.defer()
-        await update_history_message(interaction.message, target_user_id, page + 1)
-
-    async def close_callback(interaction):
-        await interaction.message.delete()
-
-    previous_button.callback = previous_callback
-    next_button.callback = next_callback
-    close_button.callback = close_callback
-
-    view = View()
-    view.add_item(previous_button)
-    view.add_item(next_button)
-    view.add_item(close_button)
-
-    await message.edit(embed=history_embed, view=view)
-
-# Function to update the history message
-async def update_history_message(message, target_user_id, page):
-    rank_data = get_user(target_user_id)
-    display_name = (await message.guild.fetch_member(int(target_user_id))).global_name
-    if not rank_data or not rank_data.get("matches"):
-        await message.channel.send(f"No match history found for user {display_name}.")
-        return
-
-    matches_with_time = []
-    for match_id in rank_data["matches"]:
-        match_details = get_match_details(match_id)
-        if match_details:
-            match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
-            matches_with_time.append((match_id, match_time))
-
-    matches_with_time.sort(key=lambda x: x[1], reverse=True)
-    sorted_match_ids = [match_id for match_id, _ in matches_with_time]
-
-    matches_per_page = 10
-    total_matches = len(sorted_match_ids)
-    total_pages = (total_matches + matches_per_page - 1) // matches_per_page
-
-    match_ids = sorted_match_ids[(page-1)*matches_per_page:page*matches_per_page]
-
-    history_embed = discord.Embed(
-        title=f"{display_name}'s Match History",
-        description=f"Showing matches {((page-1)*matches_per_page)+1}-{page*matches_per_page} out of {total_matches} matches",
-        color=discord.Color.blue()
-    )
-
-    for match_id in match_ids:
-        match_details = get_match_details(match_id)
-        if not match_details:
-            continue
-
-        if target_user_id in match_details["team1"]:
-            status = "Win" if match_details["winner"] == "Team A" else "Loss"
-        elif target_user_id in match_details["team2"]:
-            status = "Win" if match_details["winner"] == "Team B" else "Loss"
-        else:
-            status = "Unknown"
-
-        match_time = datetime.fromisoformat(match_details["created_at"].replace('Z', '+00:00'))
-        match_time_adjusted = match_time - timedelta(hours=4)
-        formatted_time = match_time_adjusted.strftime("%B %d, %I:%M%p").replace('AM', 'am').replace('PM', 'pm')
-        formatted_time = formatted_time.replace(" 0", " ")
-
-        replay_code = match_details.get("replay")
-        replay_text = f"**Replay Code:** {replay_code}\n" if replay_code else ""
-
-        history_embed.add_field(
-            name=f"-----------------------------------------------------------\n{match_details['game'].capitalize()}: {match_id}",
-            value=(
-                f"**Map:** {match_details['map']}\n"
-                f"**Result:** {status}\n"
-                f"{replay_text}**Time:** {formatted_time}"
-            ),
-            inline=False
-        )
-
-    history_embed.set_footer(text=f"Page {page} of {total_pages}")
-
-    previous_button = Button(label="Previous", style=discord.ButtonStyle.primary, disabled=page == 1)
-    next_button = Button(label="Next", style=discord.ButtonStyle.primary, disabled=page == total_pages)
-
-    async def previous_callback(interaction):
-        await interaction.response.defer()
-        await update_history_message(interaction.message, target_user_id, page - 1)
-
-    async def next_callback(interaction):
-        await interaction.response.defer()
-        await update_history_message(interaction.message, target_user_id, page + 1)
-
-    previous_button.callback = previous_callback
-    next_button.callback = next_callback
-
-    view = View()
-    view.add_item(previous_button)
-    view.add_item(next_button)
-
-    await message.edit(embed=history_embed, view=view)
 
 # Function to fetch and display match details based on match ID
 async def match_command(bot, message):
@@ -739,6 +463,131 @@ async def delete_match_command(bot, message):
     else:
         await message.channel.send("You do not have permission to use this command.")
 
+# Function to handle the get head-to-head record
+async def h2h_command(bot, message):
+    msg = message.content
+    parts = msg.split()
+
+    if len(parts) == 1:  # Just !h2h, show user's H2H against everyone
+        user_identifier = str(message.author.id)
+
+        user_id = await resolve_user(bot, user_identifier)
+        if not user_id:
+            await message.channel.send("User not found or invalid identifier.")
+            return
+
+        records = get_head_to_head_record_against_all(user_id)
+        if not records:
+            await message.channel.send("No matches found against any players.")
+            return
+
+        records_per_page = 15
+        total_records = len(records)
+        total_pages = (total_records + records_per_page - 1) // records_per_page
+
+        # Create an embed directly
+        embed = discord.Embed(
+            title=f"{(await bot.fetch_user(user_id)).global_name}'s Head-to-Head Record",
+            color=discord.Color.purple()
+        )
+
+        start_index = (1 - 1) * records_per_page
+        end_index = start_index + records_per_page
+        records_page = records[start_index:end_index]
+
+        await update_h2h_embed(embed, records_page, bot)
+
+        embed.set_footer(text=f"Page 1 of {total_pages}")
+
+        paginator = Paginator(
+            bot=bot,
+            title=f"{(await bot.fetch_user(user_id)).global_name}'s Head-to-Head Record",
+            data=records,
+            page_size=records_per_page,
+            page=1,
+            total_pages=total_pages,
+            update_func=update_h2h_embed
+        )
+
+        # Send the message with the initial embed and the paginator buttons
+        await message.channel.send(embed=embed, view=paginator)
+
+    elif len(parts) == 2:  # !h2h <user>
+        user_identifier1 = str(message.author.id)
+        user_identifier2 = parts[1]
+
+        user1_id = await resolve_user(bot, user_identifier1)
+        user2_id = await resolve_user(bot, user_identifier2)
+
+        if not user1_id or not user2_id:
+            await message.channel.send("One or both users could not be found.")
+            return
+
+        record = get_head_to_head_record(user1_id, user2_id)
+        if not record:
+            await message.channel.send("No matches found between these two users.")
+            return
+
+        h2h_embed = discord.Embed(
+            title=f"Head-to-Head: {(await bot.fetch_user(user1_id)).global_name} vs {(await bot.fetch_user(user2_id)).global_name}",
+            color=discord.Color.purple()
+        )
+        h2h_embed.add_field(
+            name=f"{(await bot.fetch_user(user1_id)).global_name} Wins",
+            value=f"{record['user1_wins']}",
+            inline=True
+        )
+        h2h_embed.add_field(
+            name=f"{(await bot.fetch_user(user2_id)).global_name} Wins",
+            value=f"{record['user2_wins']}",
+            inline=True
+        )
+        await message.channel.send(embed=h2h_embed)
+
+    elif len(parts) == 3:  # !h2h <user1> <user2>
+        user_identifier1 = parts[1]
+        user_identifier2 = parts[2]
+
+        user1_id = await resolve_user(bot, user_identifier1)
+        user2_id = await resolve_user(bot, user_identifier2)
+
+        if not user1_id or not user2_id:
+            await message.channel.send("One or both users could not be found.")
+            return
+
+        record = get_head_to_head_record(user1_id, user2_id)
+        if not record:
+            await message.channel.send("No matches found between these two users.")
+            return
+
+        h2h_embed = discord.Embed(
+            title=f"Head-to-Head: {(await bot.fetch_user(user1_id)).global_name} vs {(await bot.fetch_user(user2_id)).global_name}",
+            color=discord.Color.purple()
+        )
+        h2h_embed.add_field(
+            name=f"{(await bot.fetch_user(user1_id)).global_name} Wins",
+            value=f"{record['user1_wins']}",
+            inline=True
+        )
+        h2h_embed.add_field(
+            name=f"{(await bot.fetch_user(user2_id)).global_name} Wins",
+            value=f"{record['user2_wins']}",
+            inline=True
+        )
+        await message.channel.send(embed=h2h_embed)
+
+    else:
+        await message.channel.send("Invalid usage. Usage: !h2h, !h2h <user>, or !h2h <user1> <user2>")
+
+async def update_h2h_embed(embed, records, bot):
+    for opponent_id, record in records:
+        opponent_name = (await bot.fetch_user(int(opponent_id))).mention
+        embed.add_field(
+            name="",
+            value=f"{opponent_name}: {record['wins']}-{record['losses']}",
+            inline=False
+        )
+
 # Function to handle the gpt command
 async def gpt_command(bot, message):
     msg = message.content
@@ -760,6 +609,7 @@ async def help_command(bot, message):
         "!clearrank <user> - Clear individual rank for a player (Admin)\n"
         "!clearqueue - Clear all active queues (Admin)\n"
         "!clearreplay - Clear all replay codes (Admin)\n"
+        "!deletematch <match_id> - Delete a match by ID (Admin)\n"
         "!help - Show this help message\n"
         "*Commands marked with * are optional*"
     )

@@ -311,3 +311,67 @@ def delete_match(match_id: str):
     
     except Exception as e:
         print(f"Error deleting match {match_id}: {e}")
+
+# Function to get the head-to-head record between two users
+def get_head_to_head_record(user1_id: str, user2_id: str):
+    # Fetch all matches where both users participated on opposing teams
+    response = supabase.table('matches').select('*').execute()
+
+    if not response.data:
+        return None
+
+    wins_losses = {'user1_wins': 0, 'user2_wins': 0}
+
+    for match in response.data:
+        if (user1_id in match['team1'] and user2_id in match['team2']) or (user1_id in match['team2'] and user2_id in match['team1']):
+            # Determine which user was on the winning team
+            if match['winner'] == 'Team A' and user1_id in match['team1']:
+                wins_losses['user1_wins'] += 1
+            elif match['winner'] == 'Team B' and user1_id in match['team2']:
+                wins_losses['user1_wins'] += 1
+            elif match['winner'] == 'Team A' and user2_id in match['team1']:
+                wins_losses['user2_wins'] += 1
+            elif match['winner'] == 'Team B' and user2_id in match['team2']:
+                wins_losses['user2_wins'] += 1
+
+    return wins_losses
+
+def get_head_to_head_record_against_all(user_id: str):
+    # Fetch all matches where the user participated
+    response = supabase.table('matches').select('*').execute()
+
+    if not response.data:
+        return None
+
+    h2h_records = {}
+
+    for match in response.data:
+        # Determine if the user was on Team A or Team B
+        if user_id in match['team1']:
+            user_team = 'Team A'
+            opponent_team = 'Team B'
+            opponents = match['team2']
+        elif user_id in match['team2']:
+            user_team = 'Team B'
+            opponent_team = 'Team A'
+            opponents = match['team1']
+        else:
+            continue  # User was not part of this match
+
+        # Check the result and update the head-to-head records
+        for opponent_id in opponents:
+            if opponent_id not in h2h_records:
+                h2h_records[opponent_id] = {'wins': 0, 'losses': 0}
+
+            if match['winner'] == user_team:
+                h2h_records[opponent_id]['wins'] += 1
+            else:
+                h2h_records[opponent_id]['losses'] += 1
+
+    # Filter out records with no wins or losses
+    filtered_records = {k: v for k, v in h2h_records.items() if v['wins'] > 0 or v['losses'] > 0}
+
+    # Sort by win/loss ratio
+    sorted_records = sorted(filtered_records.items(), key=lambda x: (x[1]['wins'] / max(x[1]['losses'], 1)), reverse=True)
+
+    return sorted_records

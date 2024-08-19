@@ -531,6 +531,67 @@ class FinishButton(Button):
 
         await interaction.response.send_message("Match process finished.", ephemeral=True)
 
+class Paginator(View):
+    def __init__(self, bot, title, data, page_size, page, total_pages, update_func, **kwargs):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.title = title
+        self.data = data
+        self.page_size = page_size
+        self.page = page
+        self.total_pages = total_pages
+        self.update_func = update_func
+        self.kwargs = kwargs
+
+        # Add buttons to the view
+        self.previous_button = Button(label="Previous", style=discord.ButtonStyle.primary, disabled=self.page == 1)
+        self.next_button = Button(label="Next", style=discord.ButtonStyle.primary, disabled=self.page == self.total_pages)
+        self.close_button = Button(label="Close", style=discord.ButtonStyle.danger)
+
+        self.previous_button.callback = self.previous_callback
+        self.next_button.callback = self.next_callback
+        self.close_button.callback = self.close_callback
+
+        self.add_item(self.previous_button)
+        self.add_item(self.next_button)
+        self.add_item(self.close_button)
+
+    async def update_embed(self, interaction):
+        start_index = (self.page - 1) * self.page_size
+        end_index = start_index + self.page_size
+        embed_data = self.data[start_index:end_index]
+
+        embed = discord.Embed(
+            title=self.title,
+            color=discord.Color.blue()
+        )
+
+        # Call the specific update function to populate the embed
+        await self.update_func(embed, embed_data, self.bot, page=self.page, page_size=self.page_size, **self.kwargs)
+
+        embed.set_footer(text=f"Page {self.page} of {self.total_pages}")
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+    async def previous_callback(self, interaction):
+        if self.page > 1:
+            self.page -= 1
+            self.next_button.disabled = False
+            if self.page == 1:
+                self.previous_button.disabled = True
+            await self.update_embed(interaction)
+
+    async def next_callback(self, interaction):
+        if self.page < self.total_pages:
+            self.page += 1
+            self.previous_button.disabled = False
+            if self.page == self.total_pages:
+                self.next_button.disabled = True
+            await self.update_embed(interaction)
+
+    async def close_callback(self, interaction):
+        await interaction.message.delete()
+
 def create_team_embed(team_a, team_b):
     embed = discord.Embed(title="Team Management", color=discord.Color.blue())
     embed.add_field(name="**Team A**", value="\n".join([f"{player.mention} (Rank: {rank})" for player, rank in team_a]), inline=True)
