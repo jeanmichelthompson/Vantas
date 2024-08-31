@@ -32,6 +32,7 @@ async def handle_message(bot, message):
         "!vantas": gpt_command,
         "!help": help_command,
         "!test": test_command,
+        "!sigma": sigma_command
     }
 
     # Split the message to get the command and arguments
@@ -672,3 +673,7 @@ async def resolve_user(bot, user_identifier):
         user = discord.utils.find(lambda m: m.name == user_identifier or m.global_name == user_identifier, members)
     
     return str(user.id) if user else None
+
+# pugx function
+async def sigma_command(bot, message):
+    await message.channel.send("erm what the sigma")
