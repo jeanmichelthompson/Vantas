@@ -188,7 +188,7 @@ async def rank_command(bot, message):
             if game != "matches" and game != "user_id":
                 position, mmr = get_user_leaderboard_position(game.lower(), target_user_id)
                 if position is not None and mmr is not None:
-                    wins_losses = wins_losses_data.get(game.lower(), {'wins': 0, 'losses': 0})
+                    wins_losses = wins_losses_data.get(game.lower(), {'wins': 0, 'losses': 0}) # type: ignore
                     rank_embed.add_field(
                         name=f"{game.capitalize()}",
                         value=f"Rank: {position}\nMMR: {mmr}\nWL: {wins_losses['wins']}-{wins_losses['losses']}",
@@ -634,22 +634,24 @@ async def gpt_command(bot, message):
 # Function to show the help message
 async def help_command(bot, message):
     help_message = (
-        "**Available Commands:**\n"
-        "!vantas <message> - Talk to Vantas directly"
+        "**General Commands:**\n"
+        "!vantas <message> - Talk to Vantas directly\n"
         "!history <user>* <page>* - Show the match history for a player. Default is you\n"
         "!match <match_id> - Show details for a specific match\n"
         "!replay <match_id> <replay_code> - Store a replay code for a match\n"
         "!leaderboard <game_name> <page>* - Show the leaderboard for a game\n"
         "!rank <user>* - Check individual rank for a player. Default is you\n"
-        "!h2h <user>* <user>* - Show head-to-head record for users. Default is you\n"
-        "!setrank <user> <game_name> <rank> - Set rank for a player (Admin)\n"
-        "!clearchat <number> - Clear chat messages (Admin)\n"
-        "!clearrank <user> - Clear individual rank for a player (Admin)\n"
-        "!clearqueue - Clear all active queues (Admin)\n"
-        "!clearreplay - Clear all replay codes (Admin)\n"
-        "!deletematch <match_id> - Delete a match by ID (Admin)\n"
-        "!help - Show this help message\n"
-        "*Commands marked with * are optional*"
+        "!h2h <user>* <user>* - Show head-to-head record for users. Default is you\n\n"
+        "**Admin Commands:**\n"
+        "!setrank <user> <game_name> <rank> - Set rank for a player\n"
+        "!clearchat <number> - Clear chat messages\n"
+        "!clearrank <user> - Clear individual rank for a player\n"
+        "!clearqueue - Clear all active queues\n"
+        "!clearreplay - Clear all replay codes\n"
+        "!deletematch <match_id> - Delete a match by ID\n"
+        "!help - Show this help message\n\n"
+
+        "*\\*Optional*"
     )
     await message.channel.send(help_message)
 

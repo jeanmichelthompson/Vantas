@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 url = config.SUPABASE_URL
 key = config.SUPABASE_KEY
-supabase: Client = create_client(url, key)
+supabase: Client = create_client(url, key) # type: ignore # type: ignore
 
 # Function to update the rank (score) of a user in a specific game based on the action (win or lose)
 def update_rank(user_id: str, game_name: str, action: str):
@@ -49,12 +49,15 @@ def get_leaderboard(game_name: str):
         
 def get_user_leaderboard_position(game_name: str, user_id: str):
     leaderboard_data = get_leaderboard(game_name)
-    if not leaderboard_data:
-        return None
+    
+    if leaderboard_data is None:
+        print(f"Debug: No leaderboard data found for game '{game_name}'")
+        return None, None
 
     for position, (uid, mmr) in enumerate(leaderboard_data, start=1):
         if uid == user_id:
             return position, mmr
+    
     return None, None
 
 def get_user(user_id: str):
@@ -104,7 +107,6 @@ def increment_ping_if_due(bot):
                     'updated_at': 'now()',
                 }).eq('id', ping_record['id']).execute()
                 print(f"Ping incremented to {new_ping_value} and updated_at set to current time.")
-                clear_all_queues(bot)
             else:
                 print("Less than a day has passed since the last update. No update necessary.")
         else:
