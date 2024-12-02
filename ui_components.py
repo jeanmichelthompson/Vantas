@@ -153,7 +153,10 @@ class ConfirmTeamsButton(Button):
         await match_message.edit(view=select_map_view)
 
         # Delete the original team management message
-        await interaction.message.delete()
+        try:
+            await interaction.message.delete()
+        except discord.errors.NotFound:
+            pass
 
 class SelectMapView(View):
     def __init__(self, maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page=1, total_pages=None):
@@ -178,6 +181,7 @@ class SelectMapView(View):
                 self.add_item(PaginationButton("next", maps, match_id, match_message_id, team_a, team_b, game_name, organizer_id, current_page, self.total_pages))
         else:
             # If no maps are available, show the "Match Complete" button directly
+            self.add_item(TeamVoiceButton(self.team_a, self.team_b, self.game_name, self.organizer_id))
             self.add_item(MatchCompleteButton(match_id, team_a, team_b, game_name, match_message_id, organizer_id))
 
 class SelectMapDropdown(discord.ui.Select):
@@ -416,6 +420,7 @@ class RequeueView(View):
         self.add_item(LobbyVoiceButton(self.team_a, self.team_b, self.game_name, self.organizer_id))
         self.add_item(FinishButton(self.organizer_id))
 
+# ui_components.py
 class RequeueButton(Button):
     def __init__(self, team_a, team_b, game_name, organizer_id=None):
         super().__init__(label="Requeue", style=discord.ButtonStyle.green)
@@ -431,33 +436,49 @@ class RequeueButton(Button):
         # Combine players from both teams
         players = self.team_a + self.team_b
 
-        # Fetch the updated ranks from the database
-        from supabase_client import check_rank
+        await interaction.response.defer(ephemeral=True)
 
-        updated_players = []
+        # Get the channel ID for the game
+        channel_info = next(
+            (info for info in CHANNEL_INFO if info["title"].lower().startswith(self.game_name.lower())),
+            None,
+        )
+        if not channel_info:
+            return await interaction.response.send_message(
+                "Channel information not found for this game.", ephemeral=True
+            )
+        channel_id = channel_info["channel_id"]
+        queue_channel = interaction.guild.get_channel(channel_id)
+        channel = interaction.channel
+
+        # Retrieve the original queue message ID from the channel's context
+        from matchmaking import queues
+        queue_info = queues.get(channel.id)
+        if not queue_info or not queue_info.get("message_id"):
+            await interaction.response.send_message("Could not find the original queue message.", ephemeral=True)
+            return
+
+        original_queue_message_id = queue_info["message_id"]
+
+        # Delete all messages in the channel except the original queue message
+        async for message in channel.history(limit=100):
+            if message.id != original_queue_message_id and message.author == channel.guild.me:
+                try:
+                    await message.delete()
+                except discord.errors.NotFound:
+                    pass 
+
+        from matchmaking import add_user_to_queue
+        # Loop over each player and add them to the queue
         for player, _ in players:
-            rank_data = check_rank(str(player.id))
-            if rank_data and self.game_name in rank_data:
-                updated_players.append((player, rank_data[self.game_name]))
-            else:
-                updated_players.append((player, 0))
-
-        # Sort players by rank (optional, depending on your matchmaking logic)
-        updated_players.sort(key=lambda x: x[1], reverse=True)
-
-        # Distribute players back into two balanced teams
-        new_team_a = []
-        new_team_b = []
-        for i, (player, rank) in enumerate(updated_players):
-            if i % 2 == 0:
-                new_team_a.append((player, rank))
-            else:
-                new_team_b.append((player, rank))
-
-        # Send a message with the new teams
-        embed = create_team_embed(new_team_a, new_team_b)
-        await interaction.response.send_message("Requeued! Please confirm the teams.", embed=embed, view=TeamManagementView(new_team_a, new_team_b, self.game_name, self.organizer_id))
-        await interaction.message.delete()
+            await add_user_to_queue(player, channel_id, queue_channel)
+        
+        # Send confirmation and delete the requeue message
+        await interaction.followup.send("Players have been requeued.", ephemeral=True)
+        try:
+            await interaction.message.delete()
+        except discord.errors.NotFound:
+            pass
 
 class LobbyVoiceButton(Button):
     def __init__(self, team_a, team_b, game_name, organizer_id=None):
@@ -590,7 +611,10 @@ class Paginator(View):
             await self.update_embed(interaction)
 
     async def close_callback(self, interaction):
-        await interaction.message.delete()
+        try:
+            await interaction.message.delete()
+        except discord.errors.NotFound:
+            pass
 
 def create_team_embed(team_a, team_b):
     embed = discord.Embed(title="Team Management", color=discord.Color.blue())

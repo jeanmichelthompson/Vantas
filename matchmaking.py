@@ -57,6 +57,11 @@ def format_queue(channel_id):
 # Function to handle a user joining the queue
 async def handle_join_queue(interaction: discord.Interaction, channel_id):
     user = interaction.user
+    await add_user_to_queue(user, channel_id, interaction.channel)
+    await interaction.response.send_message("You have joined the queue.", ephemeral=True)
+
+# Function to add a user to the queue
+async def add_user_to_queue(user, channel_id, interaction_channel):
     queue_info = queues[channel_id]
     queue = queue_info["queue"]
     max_players = queue_info["max_players"]
@@ -64,21 +69,33 @@ async def handle_join_queue(interaction: discord.Interaction, channel_id):
     if user not in queue:
         queue.append(user)
         # Save the updated queue state to Supabase
-        update_queue_data(channel_id, {"channel_id": channel_id, "title": queue_info["title"], "queue": [member.id for member in queue], "max_players": max_players, "message_id": queue_info["message_id"]})
-        await update_queue_message(interaction.channel, channel_id)
+        update_queue_data(channel_id, {
+            "channel_id": channel_id,
+            "title": queue_info["title"],
+            "queue": [member.id for member in queue],
+            "max_players": max_players,
+            "message_id": queue_info["message_id"]
+        })
+        await update_queue_message(interaction_channel, channel_id)
         
         if len(queue) == max_players:
-            await process_full_queue(interaction, channel_id, queue_info)
+            await process_full_queue(interaction_channel, channel_id, queue_info)
             queue.clear()
             # Clear the queue state in Supabase
-            update_queue_data(channel_id, {"channel_id": channel_id, "title": queue_info["title"], "queue": [], "max_players": max_players, "message_id": queue_info["message_id"]})
-            await update_queue_message(interaction.channel, channel_id)
-        await interaction.response.send_message("You have joined the queue.", ephemeral=True)
+            update_queue_data(channel_id, {
+                "channel_id": channel_id,
+                "title": queue_info["title"],
+                "queue": [],
+                "max_players": max_players,
+                "message_id": queue_info["message_id"]
+            })
+            await update_queue_message(interaction_channel, channel_id)
     else:
-        await interaction.response.send_message("You are already in the queue.", ephemeral=True)
+        # Optionally, you can send a message or log that the user is already in the queue
+        pass
 
 # Function to process the queue when it is full
-async def process_full_queue(interaction: discord.Interaction, channel_id, queue_info):
+async def process_full_queue(interaction_or_channel, channel_id, queue_info):
     queue = queue_info["queue"]
     game_name = queue_info["title"].split()[0].lower()  
     
@@ -89,7 +106,7 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
     for member in queue:
         rank_data = get_user(str(member.id))
         if rank_data:
-            player_ranks.append((member, rank_data[game_name]))
+            player_ranks.append((member, rank_data.get(game_name, 0)))
         else:
             player_ranks.append((member, 0))
 
@@ -104,9 +121,15 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
     # Get the Discord user object for the organizer
     organizer = next((member for member in queue if member.id == organizer_id), None)
 
+    # Determine the channel to send messages to
+    if isinstance(interaction_or_channel, discord.Interaction):
+        channel = interaction_or_channel.channel
+    else:
+        channel = interaction_or_channel  # Should be a discord.TextChannel
+
     if organizer:
         # Send a message mentioning the organizer
-        await interaction.channel.send(f"{organizer.mention} has been designated as the organizer for this match.")
+        await channel.send(f"{organizer.mention} has been designated as the organizer for this match.")
 
     # Sort by rank in descending order
     player_ranks.sort(key=lambda x: x[1], reverse=True)
@@ -123,13 +146,13 @@ async def process_full_queue(interaction: discord.Interaction, channel_id, queue
     # Send a message with the teams
     team_a_mentions = ", ".join([member.mention for member, _ in team_a])
     team_b_mentions = ", ".join([member.mention for member, _ in team_b])
-    await interaction.channel.send(f"Match is ready!\n\n*Suggested Teams*\n**Team A:** {team_a_mentions}\n**Team B:** {team_b_mentions}")
+    await channel.send(f"Match is ready!\n\n*Suggested Teams*\n**Team A:** {team_a_mentions}\n**Team B:** {team_b_mentions}")
 
     # Create an embed with the teams
     embed = create_team_embed(team_a, team_b)
 
     # Send the embed with buttons to edit and confirm the teams, pass the organizer ID
-    await interaction.channel.send(embed=embed, view=TeamManagementView(team_a, team_b, game_name, organizer_id=organizer_id))
+    await channel.send(embed=embed, view=TeamManagementView(team_a, team_b, game_name, organizer_id=organizer_id))
 
 # Function to handle a user leaving the queue
 async def handle_leave_queue(interaction: discord.Interaction, channel_id):
